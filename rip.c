@@ -14,8 +14,15 @@
 
 #include "png.h" /* png_*, setjmp */
 
+
 #define FILENAME "pokegra.narc"
 #define OUTDIR "test"
+
+
+#define fseeko fseek
+#define ftello ftell
+#define off_t int
+
 
 typedef uint8_t u8;
 typedef uint16_t u16;
@@ -23,10 +30,7 @@ typedef uint32_t u32;
 
 typedef u32 magic_t;
 
-
-#define fseeko fseek
-#define ftello ftell
-#define off_t int
+/******************************************************************************/
 
 struct standard_header {
 	magic_t magic;
@@ -135,6 +139,18 @@ struct PLTT {
 	u8 *data;
 };
 
+struct rgba {
+	u8 r;
+	u8 g;
+	u8 b;
+	u8 a;
+};
+
+/******************************************************************************/
+
+static char magic_buf[5];
+#define STRMAGIC(magic) (strmagic((magic), magic_buf))
+
 static void
 warn(const char *s, ...)
 {
@@ -164,8 +180,7 @@ strmagic(magic_t magic, char *buf)
 	return buf;
 }
 
-static char magic_buf[5];
-#define STRMAGIC(magic) (strmagic((magic), magic_buf))
+/******************************************************************************/
 
 static int
 ncgr_read(void *buf, FILE *fp)
@@ -408,62 +423,7 @@ narc_load_file(struct NARC *narc, int index)
 	return NULL;
 }
 
-
-static int
-list(void)
-{
-	struct NARC narc;
-	struct standard_header *chunk;
-
-	narc_init(&narc);
-	if (narc_load(&narc, FILENAME)) {
-		if (errno) perror(NULL);
-		exit(EXIT_FAILURE);
-	}
-
-	for (int i = 0; i < narc.fatb.header.file_count; i++) {
-		chunk = narc_load_file(&narc, i);
-		if (chunk != NULL) {
-			pmagic((chunk)->magic);
-		} else {
-			printf("(null)\n");
-		}
-	}
-
-	exit(EXIT_SUCCESS);
-}
-
-
-#define MULT 0x41c64e6dL
-#define ADD 0x6073L
-
-static void
-unscramble_dp(u16 *data, int size)
-{
-	u16 seed = data[size - 1];
-	for (int i = size - 1; i >= 0; i--) {
-		data[i] ^= seed;
-		seed = seed * MULT + ADD;
-	}
-}
-
-static void
-unscramble_pt(u16 *data, int size)
-{
-	u16 seed = data[0];
-	for (int i = 0; i < size; i++) {
-		data[i] ^= seed;
-		seed = seed * MULT + ADD;
-	}
-}
-
-
-struct rgba {
-	u8 r;
-	u8 g;
-	u8 b;
-	u8 a;
-};
+/******************************************************************************/
 
 static struct rgba *
 nclr_get_colors(struct NCLR *self, int index)
@@ -578,6 +538,8 @@ ncgr_get_pixels(struct NCGR *self, int *height_out, int *width_out)
 	*width_out = width;
 	return pixels;
 }
+
+/******************************************************************************/
 
 static int
 write_pam(u8 *pixels, struct rgba *colors, int height, int width, FILE *fp)
@@ -736,6 +698,55 @@ ncgr_to_png(struct NCGR *sprite, struct NCLR *palette, int palette_index, FILE *
 	return status;
 }
 
+/******************************************************************************/
+
+#define MULT 0x41c64e6dL
+#define ADD 0x6073L
+
+static void
+unscramble_dp(u16 *data, int size)
+{
+	u16 seed = data[size - 1];
+	for (int i = size - 1; i >= 0; i--) {
+		data[i] ^= seed;
+		seed = seed * MULT + ADD;
+	}
+}
+
+static void
+unscramble_pt(u16 *data, int size)
+{
+	u16 seed = data[0];
+	for (int i = 0; i < size; i++) {
+		data[i] ^= seed;
+		seed = seed * MULT + ADD;
+	}
+}
+
+static int
+list(void)
+{
+	struct NARC narc;
+	struct standard_header *chunk;
+
+	narc_init(&narc);
+	if (narc_load(&narc, FILENAME)) {
+		if (errno) perror(NULL);
+		exit(EXIT_FAILURE);
+	}
+
+	for (int i = 0; i < narc.fatb.header.file_count; i++) {
+		chunk = narc_load_file(&narc, i);
+		if (chunk != NULL) {
+			pmagic((chunk)->magic);
+		} else {
+			printf("(null)\n");
+		}
+	}
+
+	exit(EXIT_SUCCESS);
+}
+
 
 static void
 write_sprite(u8 *pixels, int height, int width, struct NCLR *palette, char *outfile)
@@ -758,8 +769,8 @@ write_sprite(u8 *pixels, int height, int width, struct NCLR *palette, char *outf
 	}
 }
 
-int
-main(int argc, char *argv[])
+static void
+rip_sprites(void)
 {
 	struct NARC narc;
 
@@ -822,7 +833,7 @@ main(int argc, char *argv[])
 			}
 
 			assert(sprite->header.magic == (magic_t)'NCGR');
-			unscramble_dp((u16 *)sprite->char_.data,
+			unscramble_pt((u16 *)sprite->char_.data,
 				      sprite->char_.header.data_size/sizeof(u16));
 
 			int height, width;
@@ -846,4 +857,13 @@ main(int argc, char *argv[])
 
 	printf("done\n");
 	exit(EXIT_SUCCESS);
+}
+
+/******************************************************************************/
+
+int
+main(int argc, char *argv[])
+{
+	//list();
+	rip_sprites();
 }
