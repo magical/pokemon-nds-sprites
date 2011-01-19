@@ -6,12 +6,16 @@
 #include <string.h> /* memset */
 #include <math.h> /* round */
 
+#include <sys/stat.h> /* mkdir */
+
+#include <error.h> /* ENOENT */
 #include <errno.h> /* errno */
 #include <assert.h> /* assert */
 
 #include "png.h"
 
 #define FILENAME "pokegra.narc"
+#define OUTDIR "test"
 
 typedef uint8_t u8;
 typedef uint16_t u16;
@@ -733,6 +737,27 @@ ncgr_to_png(struct NCGR *sprite, struct NCLR *palette, int palette_index, FILE *
 }
 
 
+static void
+write_sprite(u8 *pixels, int height, int width, struct NCLR *palette, char *outfile)
+{
+	FILE *outfp = fopen(outfile, "wb");
+	if (outfp != NULL) {
+		struct rgba *colors = nclr_get_colors(palette, 0);
+
+		if (colors != NULL) {
+			if (write_png(pixels, colors, height, width, outfp)) {
+				warn("Error writing %s.", outfile);
+			}
+			free(colors);
+		} else {
+			warn("Error ripping %s.", outfile);
+		}
+		fclose(outfp);
+	} else {
+		perror(NULL);
+	}
+}
+
 int
 main(int argc, char *argv[])
 {
@@ -744,37 +769,79 @@ main(int argc, char *argv[])
 		exit(EXIT_FAILURE);
 	}
 
-	char outfile[256];
-	FILE *outfp = NULL;
+	char outfile[256] = "";
 
-	for (int i = 1; i <= 493; i++) {
-		sprintf(outfile, "test/%d.png", i);
-		outfp = fopen(outfile, "wb");
-		if (outfp == NULL) {
-			perror(NULL);
-			exit(EXIT_FAILURE);
-		}
+	const struct sprite_dirs {
+		const char *normal;
+		const char *shiny;
+	} const dirs[] = {
+		{"back/female", "back/shiny/female"},
+		{"back", "back/shiny"},
+		{"female", "shiny/female"},
+		{"", "shiny"},
+		{NULL},
+	};
 
-		struct NCGR *sprite = narc_load_file(&narc, i*6 + 3);
-		struct NCLR *palette = narc_load_file(&narc, i*6 + 4);
-		if (sprite == NULL) {
-			sprite = narc_load_file(&narc, i*6 + 2);
-		}
-		if (sprite == NULL || palette == NULL) {
+	#define MKDIR(dir) \
+	if (mkdir(OUTDIR "/" dir, 0755)) { \
+		switch (errno) { \
+		case 0: \
+		case EEXIST: \
+			break; \
+		default: \
+			perror(dir); \
+			exit(EXIT_FAILURE); \
+		} \
+	}
+
+	MKDIR("female")
+	MKDIR("shiny")
+	MKDIR("shiny/female")
+	MKDIR("back")
+	MKDIR("back/female")
+	MKDIR("back/shiny")
+	MKDIR("back/shiny/female")
+
+	for (int n = 1; n <= 493; n++) {
+		struct NCLR *normal_palette = narc_load_file(&narc, n*6 + 4);
+		struct NCLR *shiny_palette = narc_load_file(&narc, n*6 + 5);
+
+		if (normal_palette == NULL || shiny_palette == NULL) {
 			if (errno) perror(NULL);
 			exit(EXIT_FAILURE);
 		}
 
-		assert(sprite->header.magic == (magic_t)'NCGR');
-		assert(palette->header.magic == (magic_t)'NCLR');
+		assert(normal_palette->header.magic == (magic_t)'NCLR');
+		assert(shiny_palette->header.magic == (magic_t)'NCLR');
 
-		unscramble_dp((u16 *)sprite->char_.data, sprite->char_.header.data_size/sizeof(u16));
+		for (int i = 0; i < 4; i++) {
+			struct NCGR *sprite = narc_load_file(&narc, n*6 + i);
+			if (sprite == NULL) {
+				// this is fine
+				continue;
+			}
 
-		if (ncgr_to_png(sprite, palette, 0, outfp)) {
-			warn("Error writing %d.", i);
+			assert(sprite->header.magic == (magic_t)'NCGR');
+			unscramble_dp((u16 *)sprite->char_.data,
+				      sprite->char_.header.data_size/sizeof(u16));
+
+			int height, width;
+			u8 *pixels = ncgr_get_pixels(sprite, &height, &width);
+			if (pixels == NULL) {
+				warn("Error ripping %s.", outfile);
+				continue;
+			}
+
+			const struct sprite_dirs *d = &dirs[i];
+
+			sprintf(outfile, "%s/%s/%d.png", OUTDIR, d->normal, n);
+			write_sprite(pixels, height, width, normal_palette, outfile);
+
+			sprintf(outfile, "%s/%s/%d.png", OUTDIR, d->shiny, n);
+			write_sprite(pixels, height, width, shiny_palette, outfile);
+
+			free(pixels);
 		}
-
-		fclose(outfp);
 	}
 
 	puts("done");
