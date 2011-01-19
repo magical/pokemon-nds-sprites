@@ -19,6 +19,11 @@ typedef uint32_t u32;
 
 typedef u32 magic_t;
 
+
+#define fseeko fseek
+#define ftello ftell
+#define off_t int
+
 struct standard_header {
 	magic_t magic;
 	u16 bom;
@@ -437,6 +442,17 @@ unscramble_dp(u16 *data, int size)
 		seed = seed * MULT + ADD;
 	}
 }
+
+static void
+unscramble_pt(u16 *data, int size)
+{
+	u16 seed = data[0];
+	for (int i = 0; i < size; i++) {
+		data[i] ^= seed;
+		seed = seed * MULT + ADD;
+	}
+}
+
 
 struct rgba {
 	u8 r;
