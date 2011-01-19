@@ -320,8 +320,6 @@ void *narc_load_file(struct NARC *narc, int index)
 
 	void *chunk;
 
-	struct standard_header header;
-
 	assert(0 <= index && index < narc->fatb.header.file_count);
 
 	struct fatb_record record = narc->fatb.records[index];
@@ -395,7 +393,7 @@ void *narc_load_file(struct NARC *narc, int index)
 int list(void)
 {
 	struct NARC narc;
-	void *chunk;
+	struct standard_header *chunk;
 
 	narc_init(&narc);
 	if (narc_load(&narc, FILENAME)) {
@@ -404,9 +402,9 @@ int list(void)
 	}
 
 	for (int i = 0; i < narc.fatb.header.file_count; i++) {
-		void *chunk = narc_load_file(&narc, i);
+		chunk = narc_load_file(&narc, i);
 		if (chunk != NULL) {
-			pmagic(((struct standard_header *)chunk)->magic);
+			pmagic((chunk)->magic);
 		} else {
 			printf("(null)\n");
 		}
@@ -435,7 +433,7 @@ struct rgba {
 	u8 a;
 };
 
-int ncgr_to_pam(struct NCGR *sprite, struct NCLR *palette)
+int ncgr_to_pam(struct NCGR *sprite, struct NCLR *palette, FILE *fp)
 {
 	if (sprite->char_.header.width == 0xffff) {
 		return 1;
@@ -501,8 +499,6 @@ int ncgr_to_pam(struct NCGR *sprite, struct NCLR *palette)
 	if (sprite->char_.header.tiled == 0) {
 		u8 tmp_px[height][width];
 
-		const int ht = height / 8;
-		const int wt = width / 8;
 		int x, y, tx, ty, cx, cy, i;
 		i = 0;
 		for (y = 0; y < height / 8; y++) {
@@ -534,17 +530,17 @@ int ncgr_to_pam(struct NCGR *sprite, struct NCLR *palette)
 
 	/* write out the PAM */
 
-	printf("P7\n");
-	printf("WIDTH %d\n", width);
-	printf("HEIGHT %d\n", height);
-	printf("DEPTH 4\n");
-	printf("TUPLTYPE RGB_ALPHA\n");
-	printf("MAXVAL 31\n"); // XXX
-	printf("ENDHDR\n");
+	fprintf(fp, "P7\n");
+	fprintf(fp, "WIDTH %d\n", width);
+	fprintf(fp, "HEIGHT %d\n", height);
+	fprintf(fp, "DEPTH 4\n");
+	fprintf(fp, "TUPLTYPE RGB_ALPHA\n");
+	fprintf(fp, "MAXVAL 31\n"); // XXX
+	fprintf(fp, "ENDHDR\n");
 
 	for (i = 0; i < size; i++) {
 		struct rgba color = colors[pixels[i]];
-		fwrite(&color, 1, sizeof(color), stdout);
+		fwrite(&color, 1, sizeof(color), fp);
 	}
 
 	return 0;
@@ -554,7 +550,6 @@ int ncgr_to_pam(struct NCGR *sprite, struct NCLR *palette)
 int main(int argc, char *argv[])
 {
 	struct NARC narc;
-	void *chunk;
 
 	narc_init(&narc);
 	if (narc_load(&narc, FILENAME)) {
@@ -562,19 +557,36 @@ int main(int argc, char *argv[])
 		exit(EXIT_FAILURE);
 	}
 
-	struct NCGR *sprite = narc_load_file(&narc, 9);
-	struct NCLR *palette = narc_load_file(&narc, 10);
-	if (sprite == NULL || palette == NULL) {
-		if (errno) perror(NULL);
-		exit(EXIT_FAILURE);
+	char outfile[256];
+	FILE *outfp = NULL;
+
+	for (int i = 1; i <= 493; i++) {
+		sprintf(outfile, "test/%d.pam", i);
+		outfp = fopen(outfile, "wb");
+		if (outfp == NULL) {
+			perror(NULL);
+			exit(EXIT_FAILURE);
+		}
+
+		struct NCGR *sprite = narc_load_file(&narc, i*6 + 3);
+		struct NCLR *palette = narc_load_file(&narc, i*6 + 4);
+		if (sprite == NULL) {
+			sprite = narc_load_file(&narc, i*6 + 2);
+		}
+		if (sprite == NULL || palette == NULL) {
+			if (errno) perror(NULL);
+			exit(EXIT_FAILURE);
+		}
+
+		assert(sprite->header.magic == (magic_t)'NCGR');
+		assert(palette->header.magic == (magic_t)'NCLR');
+
+		unscramble_dp((u16 *)sprite->char_.data, sprite->char_.header.data_size/sizeof(u16));
+
+		(void)ncgr_to_pam(sprite, palette, outfp);
+
+		fclose(outfp);
 	}
-
-	assert(sprite->header.magic == (magic_t)'NCGR');
-	assert(palette->header.magic == (magic_t)'NCLR');
-
-	unscramble_dp((u16 *)sprite->char_.data, sprite->char_.header.data_size/sizeof(u16));
-
-	(void)ncgr_to_pam(sprite, palette);
 
 	puts("done");
 	exit(EXIT_SUCCESS);
