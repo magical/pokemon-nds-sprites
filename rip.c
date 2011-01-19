@@ -1,6 +1,6 @@
 
-#include <stdlib.h> /* size_t, calloc, free */
-#include <stdio.h> /* SEEK_CUR, SEEK_SET, FILE, off_t, ferror, fopen, fread, fseeko, ftello, perror, putchar, vfprintf */
+#include <stdlib.h> /* EXIT_SUCCESS, EXIT_FAILURE, size_t, calloc, exit, free, malloc */
+#include <stdio.h> /* SEEK_CUR, SEEK_SET, FILE, off_t, feof, ferror, fopen, fread, fseeko, ftello, perror, printf, putchar, sprintf, vfprintf */
 #include <stdint.h> /* uint8_t, uint16_t, uint32_t */
 #include <stdarg.h> /* va_list, va_end, va_start */
 #include <string.h> /* memset */
@@ -8,11 +8,11 @@
 
 #include <sys/stat.h> /* mkdir */
 
-#include <error.h> /* ENOENT */
+#include <error.h> /* EEXIST */
 #include <errno.h> /* errno */
 #include <assert.h> /* assert */
 
-#include "png.h"
+#include "png.h" /* png_*, setjmp */
 
 #define FILENAME "pokegra.narc"
 #define OUTDIR "test"
@@ -789,7 +789,7 @@ main(int argc, char *argv[])
 		case EEXIST: \
 			break; \
 		default: \
-			perror(dir); \
+			perror("mkdir: " OUTDIR "/" dir); \
 			exit(EXIT_FAILURE); \
 		} \
 	}
@@ -844,6 +844,6 @@ main(int argc, char *argv[])
 		}
 	}
 
-	puts("done");
+	printf("done\n");
 	exit(EXIT_SUCCESS);
 }
