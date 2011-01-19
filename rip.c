@@ -4,9 +4,12 @@
 #include <stdint.h> /* uint8_t, uint16_t, uint32_t */
 #include <stdarg.h> /* va_list, va_end, va_start */
 #include <string.h> /* memset */
-#include <errno.h> /* errno */
+#include <math.h> /* round */
 
+#include <errno.h> /* errno */
 #include <assert.h> /* assert */
+
+#include "png.h"
 
 #define FILENAME "pokegra.narc"
 
@@ -123,7 +126,7 @@ struct PLTT {
 	u8 *data;
 };
 
-void
+static void
 warn(const char *s, ...)
 {
 	va_list va;
@@ -133,7 +136,7 @@ warn(const char *s, ...)
 	fprintf(stderr, "\n");
 }
 
-void
+static void
 pmagic(magic_t magic)
 {
 	for (int i = 0; i < 4; i++) {
@@ -142,7 +145,7 @@ pmagic(magic_t magic)
 	putchar('\n');
 }
 
-char *
+static char *
 strmagic(magic_t magic, char *buf)
 {
 	for (int i = 0; i < 4; i++) {
@@ -155,7 +158,7 @@ strmagic(magic_t magic, char *buf)
 static char magic_buf[5];
 #define STRMAGIC(magic) (strmagic((magic), magic_buf))
 
-int
+static int
 ncgr_read(void *buf, FILE *fp)
 {
 	struct NCGR *self = buf;
@@ -181,7 +184,7 @@ ncgr_read(void *buf, FILE *fp)
 	return ferror(fp) || feof(fp);
 }
 
-int
+static int
 nclr_read(void *buf, FILE *fp)
 {
 	struct NCLR *self = buf;
@@ -221,7 +224,7 @@ nclr_read(void *buf, FILE *fp)
 	return 1;
 }
 
-const struct format_info {
+static const struct format_info {
 	magic_t magic;
 
 	size_t size;
@@ -241,13 +244,13 @@ const struct format_info {
 };
 
 
-void
+static void
 narc_init(struct NARC *narc)
 {
 	memset(narc, 0, sizeof(*narc));
 }
 
-int
+static int
 narc_load(struct NARC *narc, const char *filename)
 {
 	assert(narc != NULL);
@@ -319,7 +322,7 @@ narc_load(struct NARC *narc, const char *filename)
 }
 
 
-void *
+static void *
 narc_load_file(struct NARC *narc, int index)
 {
 	assert(narc != NULL);
@@ -397,7 +400,7 @@ narc_load_file(struct NARC *narc, int index)
 }
 
 
-int
+static int
 list(void)
 {
 	struct NARC narc;
@@ -425,7 +428,7 @@ list(void)
 #define MULT 0x41c64e6dL
 #define ADD 0x6073L
 
-void
+static void
 unscramble_dp(u16 *data, int size)
 {
 	u16 seed = data[size - 1];
@@ -442,7 +445,7 @@ struct rgba {
 	u8 a;
 };
 
-struct rgba *
+static struct rgba *
 nclr_get_colors(struct NCLR *self, int index)
 {
 	assert(self != NULL);
@@ -482,7 +485,7 @@ nclr_get_colors(struct NCLR *self, int index)
 	return colors;
 }
 
-u8 *
+static u8 *
 ncgr_get_pixels(struct NCGR *self, int *height_out, int *width_out)
 {
 	assert(self != NULL);
@@ -556,7 +559,7 @@ ncgr_get_pixels(struct NCGR *self, int *height_out, int *width_out)
 	return pixels;
 }
 
-int
+static int
 write_pam(u8 *pixels, struct rgba *colors, int height, int width, FILE *fp)
 {
 	if (pixels == NULL || colors == NULL) {
@@ -585,7 +588,7 @@ write_pam(u8 *pixels, struct rgba *colors, int height, int width, FILE *fp)
 	return 0;
 }
 
-int
+static int
 ncgr_to_pam(struct NCGR *sprite, struct NCLR *palette, int palette_index, FILE *fp)
 {
 	assert(sprite != NULL);
@@ -599,6 +602,111 @@ ncgr_to_pam(struct NCGR *sprite, struct NCLR *palette, int palette_index, FILE *
 
 	if (pixels != NULL && colors != NULL) {
 		status = write_pam(pixels, colors, height, width, fp);
+	} else {
+		status = 1;
+	}
+
+	free(pixels);
+	free(colors);
+	return status;
+}
+
+
+static int
+write_png(u8 *pixels, struct rgba *colors, int height, int width, FILE *fp)
+{
+	const int color_count = 16; /* XXX */
+	const int bit_depth = 5; /* XXX */
+
+	png_bytepp row_pointers = calloc(height, sizeof(*row_pointers));
+	png_colorp palette = calloc(color_count, sizeof(*palette));
+	png_color_8 sig_bit;
+	png_byte trans[1] = {0};
+
+	if (row_pointers == NULL || palette == NULL) {
+		free(row_pointers);
+		free(palette);
+		return 1;
+	}
+
+	/* expand the palette */
+
+	double factor = 255.0 / (double)((1 << bit_depth) - 1);
+	for (int i = 0; i < color_count; i++) {
+		palette[i].red = (int)round(colors[i].r * factor);
+		palette[i].green = (int)round(colors[i].g * factor);
+		palette[i].blue = (int)round(colors[i].b * factor);
+	}
+
+	/* set the row pointers */
+
+	for (int i = 0; i < height; i++) {
+		row_pointers[i] = &pixels[i * width];
+	}
+
+	/* set the significant bits */
+
+	sig_bit.red = bit_depth;
+	sig_bit.green = bit_depth;
+	sig_bit.blue = bit_depth;
+
+
+	png_structp png = png_create_write_struct(
+		PNG_LIBPNG_VER_STRING, NULL,  NULL, NULL);
+	if (!png) {
+		return 1;
+	}
+
+	png_infop info = png_create_info_struct(png);
+	if (!info) {
+		png_destroy_write_struct(&png, (png_infopp)NULL);
+		return 1;
+	}
+
+	if (setjmp(png_jmpbuf(png))) {
+		png_destroy_write_struct(&png, &info);
+		return 1;
+	}
+
+	png_init_io(png, fp);
+
+	png_set_IHDR(png, info, width, height,
+		4, /* bit depth */
+		PNG_COLOR_TYPE_PALETTE,
+		PNG_INTERLACE_NONE,
+		PNG_COMPRESSION_TYPE_DEFAULT,
+		PNG_FILTER_TYPE_DEFAULT
+	);
+
+	png_set_PLTE(png, info, palette, color_count);
+	png_set_tRNS(png, info, trans, 1, NULL);
+	png_set_sBIT(png, info, &sig_bit);
+
+	png_set_rows(png, info, row_pointers);
+
+	png_write_png(png, info, PNG_TRANSFORM_PACKING, NULL);
+
+	png_destroy_write_struct(&png, &info);
+	free(row_pointers);
+	free(palette);
+	return 0;
+}
+
+
+static int
+ncgr_to_png(struct NCGR *sprite, struct NCLR *palette, int palette_index, FILE *fp)
+{
+	assert(sprite != NULL);
+	assert(palette != NULL);
+
+	int height, width;
+	u8 *pixels = ncgr_get_pixels(sprite, &height, &width);
+	struct rgba *colors = nclr_get_colors(palette, palette_index);
+
+	int status = 0;
+
+	if (pixels != NULL && colors != NULL) {
+		status = write_png(pixels, colors, height, width, fp);
 	} else {
 		status = 1;
 	}
@@ -624,7 +732,7 @@ main(int argc, char *argv[])
 	FILE *outfp = NULL;
 
 	for (int i = 1; i <= 493; i++) {
-		sprintf(outfile, "test/%d.pam", i);
+		sprintf(outfile, "test/%d.png", i);
 		outfp = fopen(outfile, "wb");
 		if (outfp == NULL) {
 			perror(NULL);
@@ -646,7 +754,7 @@ main(int argc, char *argv[])
 
 		unscramble_dp((u16 *)sprite->char_.data, sprite->char_.header.data_size/sizeof(u16));
 
-		if (ncgr_to_pam(sprite, palette, 0, outfp)) {
+		if (ncgr_to_png(sprite, palette, 0, outfp)) {
 			warn("Error writing %d.", i);
 		}
 
