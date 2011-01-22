@@ -42,6 +42,30 @@ enum status {
 
 /******************************************************************************/
 
+/* A buffer is a sized 1-dimensional array of bytes. */
+struct buffer {
+	size_t size;
+	u8 data[];
+};
+
+/******************************************************************************/
+
+struct buffer *
+buffer_alloc(size_t size)
+{
+	struct buffer *buffer = malloc(sizeof(struct buffer) + size);
+	if (buffer != NULL) {
+		buffer->size = size;
+		memset(buffer->data, 0, buffer->size);
+		return buffer;
+	}
+	return NULL;
+}
+
+/* There is no buffer_free() - just use free(). */
+
+/******************************************************************************/
+
 struct standard_header {
 	magic_t magic;
 	u16 bom;
@@ -82,11 +106,11 @@ struct FNTB {
 struct NARC {
 	struct standard_header header;
 
-	FILE *fp;
-
 	struct FATB fatb;
 
 	struct FNTB fntb;
+
+	FILE *fp;
 
 	/* offset to the beginning of the FIMG data */
 	off_t data_offset;
@@ -111,7 +135,7 @@ struct CHAR {
 		u32 unknown;
 	} header;
 
-	u8 *data;
+	struct buffer *buffer;
 };
 
 struct NCGR {
@@ -139,7 +163,7 @@ struct PLTT {
 		u32 color_count;
 	} header;
 
-	u8 *data;
+	struct buffer *buffer;
 };
 
 struct NCLR {
@@ -274,14 +298,14 @@ ncgr_read(void *buf, FILE *fp)
 
 	assert(self->char_.header.magic == (magic_t)'CHAR');
 
-	self->char_.data = malloc(self->char_.header.data_size);
-	if (self->char_.data == NULL) {
+	self->char_.buffer = buffer_alloc(self->char_.header.data_size);
+	if (self->char_.buffer == NULL) {
 		return NOMEM;
 	}
 
-	fread(self->char_.data, 1, self->char_.header.data_size, fp);
+	fread(self->char_.buffer->data, 1, self->char_.buffer->size, fp);
 	if (ferror(fp) || feof(fp)) {
-		FREE(self->char_.data);
+		FREE(self->char_.buffer);
 		return FAIL;
 	}
 
@@ -301,14 +325,14 @@ nclr_read(void *buf, FILE *fp)
 
 	assert(self->pltt.header.magic == (magic_t)'PLTT');
 
-	self->pltt.data = calloc(self->pltt.header.data_size, 1);
-	if (self->pltt.data == NULL) {
+	self->pltt.buffer = buffer_alloc(self->pltt.header.data_size);
+	if (self->pltt.buffer == NULL) {
 		return NOMEM;
 	}
 
-	fread(self->pltt.data, self->pltt.header.data_size, 1, fp);
+	fread(self->pltt.buffer->data, self->pltt.buffer->size, 1, fp);
 	if (ferror(fp) || feof(fp)) {
-		FREE(self->pltt.data);
+		FREE(self->pltt.buffer);
 		return FAIL;
 	}
 
@@ -332,7 +356,7 @@ ncgr_free(void *buf) {
 
 	if (self != NULL ||
 	    self->header.magic == (magic_t)'NCGR') {
-		FREE(self->char_.data);
+		FREE(self->char_.buffer);
 	}
 }
 
@@ -342,7 +366,7 @@ nclr_free(void *buf) {
 
 	if (self != NULL ||
 	    self->header.magic == (magic_t)'NCLR') {
-		FREE(self->pltt.data);
+		FREE(self->pltt.buffer);
 	}
 }
 
@@ -507,7 +531,7 @@ nclr_get_colors(struct NCLR *self, int index)
 	struct PLTT *palette = &self->pltt;
 	struct rgba *colors = NULL;
 
-	assert(palette->data != NULL);
+	assert(palette->buffer != NULL);
 
 	int size = palette->header.color_count;
 	if (palette->header.bit_depth == 4) {
@@ -524,7 +548,7 @@ nclr_get_colors(struct NCLR *self, int index)
 
 	/* unpack the colors */
 
-	u16 *colors16 = (u16 *)palette->data;
+	u16 *colors16 = (u16 *)palette->buffer->data;
 	for (int i = 0; i < size; i++) {
 		colors[i].r = colors16[i] & 0x1f;
 		colors[i].g = (colors16[i] >> 5) & 0x1f;
@@ -540,7 +564,7 @@ static u8 *
 ncgr_get_pixels(struct NCGR *self, int *height_out, int *width_out)
 {
 	assert(self != NULL);
-	assert(self->char_.data != NULL);
+	assert(self->char_.buffer != NULL);
 
 	int width, height, size;
 	if (self->char_.header.width == 0xffff) {
@@ -572,18 +596,18 @@ ncgr_get_pixels(struct NCGR *self, int *height_out, int *width_out)
 	switch(self->char_.header.bit_depth) {
 	case 3:
 		// 4 bits per pixel
-		assert(self->char_.header.data_size * 2 == size);
-		for (i = 0; i < self->char_.header.data_size; i++) {
-			u8 byte = self->char_.data[i];
+		assert(self->char_.buffer->size * 2 == size);
+		for (i = 0; i < self->char_.buffer->size; i++) {
+			u8 byte = self->char_.buffer->data[i];
 			pixels[i*2] = byte & 0x0f;
 			pixels[i*2 + 1] = (byte >> 4) & 0x0f;
 		}
 		break;
 	case 4:
 		// 8 bits per pixel
-		assert(self->char_.header.data_size == size);
-		for (i = 0; i < self->char_.header.data_size; i++) {
-			pixels[i] = self->char_.data[i];
+		assert(self->char_.buffer->size == size);
+		for (i = 0; i < self->char_.buffer->size; i++) {
+			pixels[i] = self->char_.buffer->data[i];
 		}
 		break;
 	default:
@@ -787,20 +811,26 @@ ncgr_to_png(struct NCGR *sprite, struct NCLR *palette, int palette_index, FILE *
 #define ADD 0x6073L
 
 static void
-unscramble_dp(u16 *data, int size)
+unscramble_dp(struct buffer *buffer)
 {
+	const ssize_t size = buffer->size / sizeof(u16);
+	u16 *data = (u16*)buffer->data;
+
 	u16 seed = data[size - 1];
-	for (int i = size - 1; i >= 0; i--) {
+	for (ssize_t i = size - 1; i >= 0; i--) {
 		data[i] ^= seed;
 		seed = seed * MULT + ADD;
 	}
 }
 
 static void
-unscramble_pt(u16 *data, int size)
+unscramble_pt(struct buffer *buffer)
 {
+	const ssize_t size = buffer->size / sizeof(u16);
+	u16 *data = (u16*)buffer->data;
+
 	u16 seed = data[0];
-	for (int i = 0; i < size; i++) {
+	for (ssize_t i = 0; i < size; i++) {
 		data[i] ^= seed;
 		seed = seed * MULT + ADD;
 	}
@@ -937,8 +967,7 @@ rip_sprites(void)
 			}
 
 			assert(sprite->header.magic == (magic_t)'NCGR');
-			unscramble_pt((u16 *)sprite->char_.data,
-				      sprite->char_.header.data_size/sizeof(u16));
+			unscramble_pt(sprite->char_.buffer);
 
 			int height, width;
 			u8 *pixels = ncgr_get_pixels(sprite, &height, &width);
@@ -992,8 +1021,7 @@ rip_trainers(void)
 		}
 		assert(palette->header.magic == (magic_t)'NCLR');
 
-		unscramble_pt((u16 *)sprite->char_.data,
-		              sprite->char_.header.data_size/sizeof(u16));
+		unscramble_pt(sprite->char_.buffer);
 
 		int height, width;
 		u8 *pixels = ncgr_get_pixels(sprite, &height, &width);
@@ -1053,8 +1081,7 @@ rip_trainers2(void)
 
 			if (i == 1) {
 				/* pt for platinum, dp for hgss */
-				unscramble_dp((u16 *)sprite->char_.data,
-				              sprite->char_.header.data_size/sizeof(u16));
+				unscramble_dp(sprite->char_.buffer);
 			}
 
 			int height, width;
