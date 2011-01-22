@@ -424,7 +424,7 @@ narc_load_file(struct NARC *self, int index)
 	assert(self != NULL);
 	assert(self->fp != NULL);
 
-	assert(0 <= index && index < self->fatb.header.file_count);
+	assert(0 <= index && index < (signed long)self->fatb.header.file_count);
 
 	struct fatb_record record = self->fatb.records[index];
 
@@ -524,7 +524,7 @@ nclr_get_colors(struct NCLR *self, int index)
 
 	assert(self != NULL);
 
-	if (!(0 <= index && index < self->header.chunk_count)) {
+	if (!(0 <= index && index < (signed long)self->header.chunk_count)) {
 		return NULL;
 	}
 
@@ -592,11 +592,11 @@ ncgr_get_pixels(struct NCGR *self, int *height_out, int *width_out)
 
 	/* unpack the pixels */
 
-	int i;
+	size_t i;
 	switch(self->char_.header.bit_depth) {
 	case 3:
 		// 4 bits per pixel
-		assert(self->char_.buffer->size * 2 == size);
+		assert(self->char_.buffer->size * 2 == (unsigned)size);
 		for (i = 0; i < self->char_.buffer->size; i++) {
 			u8 byte = self->char_.buffer->data[i];
 			pixels[i*2] = byte & 0x0f;
@@ -605,7 +605,7 @@ ncgr_get_pixels(struct NCGR *self, int *height_out, int *width_out)
 		break;
 	case 4:
 		// 8 bits per pixel
-		assert(self->char_.buffer->size == size);
+		assert(self->char_.buffer->size == (unsigned)size);
 		for (i = 0; i < self->char_.buffer->size; i++) {
 			pixels[i] = self->char_.buffer->data[i];
 		}
@@ -883,7 +883,7 @@ list(void)
 
 	narc = open_narc(FILENAME);
 
-	for (int i = 0; i < narc->fatb.header.file_count; i++) {
+	for (int i = 0; i < (signed long)narc->fatb.header.file_count; i++) {
 		chunk = narc_load_file(narc, i);
 		if (chunk != NULL) {
 			pmagic((chunk)->magic);
