@@ -86,7 +86,6 @@ struct NARC {
 
 	struct FATB fatb;
 
-	/* pointer to the FATB, if loaded */
 	struct FNTB fntb;
 
 	/* offset to the beginning of the FIMG data */
@@ -194,6 +193,72 @@ strmagic(magic_t magic, char *buf)
 
 /******************************************************************************/
 
+
+static int
+narc_read(void *buf, FILE *fp)
+{
+	struct NARC *self = buf;
+	assert(self != NULL);
+
+	/* For efficiency, we stash the file pointer so we can lazily load
+	 * the contained files - although this doesn't seem like the best
+	 * solution */
+	self->fp = fp;
+
+	fread(&self->header, sizeof(self->header), 1, fp);
+
+	assert(self->header.chunk_count == 3);
+
+	/* read the FATB chunk */
+	fread(&self->fatb.header, sizeof(self->fatb.header), 1, fp);
+	assert(self->fatb.header.magic == (magic_t)'FATB');
+	if (ferror(fp) || feof(fp)) {
+		return FAIL;
+	}
+
+	self->fatb.records = calloc(self->fatb.header.file_count,
+	                            sizeof(*self->fatb.records));
+
+	if (self->fatb.records == NULL) {
+		return NOMEM;
+	}
+
+	fread(self->fatb.records,
+	      sizeof(*self->fatb.records),
+	      self->fatb.header.file_count,
+	      fp);
+
+	if (ferror(fp) || feof(fp)) {
+		goto error;
+	}
+
+
+	/* skip the FNTB chunk */
+	fread(&self->fntb.header, sizeof(self->fntb.header), 1, fp);
+	assert(self->fntb.header.magic == (magic_t)'FNTB');
+	if (ferror(fp) || feof(fp)) {
+		goto error;
+	}
+	fseeko(self->fp, (off_t)(self->fntb.header.size - sizeof(self->fntb.header)), SEEK_CUR);
+
+	/* set the data offset */
+	struct { magic_t magic; u32 size; } fimg_header;
+
+	fread(&fimg_header, sizeof(fimg_header), 1, fp);
+	assert(fimg_header.magic == (magic_t)'FIMG');
+	if (ferror(fp) || feof(fp)) {
+		goto error;
+	}
+
+	self->data_offset = ftello(fp);
+
+	return OKAY;
+
+	error:
+	FREE(self->fatb.records);
+	return FAIL;
+}
+
 static int
 ncgr_read(void *buf, FILE *fp)
 {
@@ -251,27 +316,34 @@ nclr_read(void *buf, FILE *fp)
 }
 
 static void
-ncgr_free(void *buf) {
-	struct NCGR *ncgr = buf;
+narc_free(void *buf)
+{
+	struct NARC *self = buf;
 
-	if (ncgr == NULL ||
-	    ncgr->header.magic != (magic_t)'NCGR') {
-		return;
+	if (self != NULL &&
+	    self->header.magic == (magic_t)'CRAN') {
+		FREE(self->fatb.records);
 	}
+}
 
-	FREE(ncgr->char_.data);
+static void
+ncgr_free(void *buf) {
+	struct NCGR *self = buf;
+
+	if (self != NULL ||
+	    self->header.magic == (magic_t)'NCGR') {
+		FREE(self->char_.data);
+	}
 }
 
 static void
 nclr_free(void *buf) {
-	struct NCLR *nclr = buf;
+	struct NCLR *self = buf;
 
-	if (nclr == NULL ||
-	    nclr->header.magic != (magic_t)'NCLR') {
-		return;
+	if (self != NULL ||
+	    self->header.magic == (magic_t)'NCLR') {
+		FREE(self->pltt.data);
 	}
-
-	FREE(nclr->pltt.data);
 }
 
 static const struct format_info {
@@ -284,6 +356,10 @@ static const struct format_info {
 	void (*free)(void *);
 } *formats[] = {
 	#define F & (struct format_info)
+	/* the NARC signature is big-endian for some reason */
+	F{'CRAN', sizeof(struct NARC), NULL, narc_read, narc_free},
+
+	/* lesser formats */
 	F{'NCGR', sizeof(struct NCGR), NULL, ncgr_read, ncgr_free},
 	F{'NCLR', sizeof(struct NCLR), NULL, nclr_read, nclr_free},
 
@@ -301,84 +377,6 @@ static const struct format_info {
 };
 
 
-static void
-narc_init(struct NARC *narc)
-{
-	memset(narc, 0, sizeof(*narc));
-}
-
-static int
-narc_load(struct NARC *narc, const char *filename)
-{
-	assert(narc != NULL);
-	assert(filename != NULL);
-
-	FILE *fp = fopen(filename, "rb");
-	if (fp == NULL) {
-		return NOMEM;
-	}
-
-	narc->fp = fp;
-	fread(&narc->header, sizeof(narc->header), 1, fp);
-
-	/* 'NARC' is big-endian for some reason */
-	if (narc->header.magic != (magic_t)'CRAN') {
-		warn("Not a NARC");
-		return FAIL;
-	}
-
-	/* read the FATB chunk */
-	fread(&narc->fatb.header, sizeof(narc->fatb.header), 1, fp);
-	assert(narc->fatb.header.magic == (magic_t)'FATB');
-	if (ferror(fp) || feof(fp)) {
-		return FAIL;
-	}
-
-	narc->fatb.records = calloc(narc->fatb.header.file_count,
-	                            sizeof(*narc->fatb.records));
-
-	if (narc->fatb.records == NULL) {
-		return NOMEM;
-	}
-
-	fread(narc->fatb.records,
-	      sizeof(*narc->fatb.records),
-	      narc->fatb.header.file_count,
-	      fp);
-
-	if (ferror(fp) || feof(fp)) {
-		goto error;
-	}
-
-
-	/* skip the FNTB chunk */
-	fread(&narc->fntb.header, sizeof(narc->fntb.header), 1, fp);
-	assert(narc->fntb.header.magic == (magic_t)'FNTB');
-	if (ferror(fp) || feof(fp)) {
-		goto error;
-	}
-	fseeko(narc->fp, (off_t)(narc->fntb.header.size - sizeof(narc->fntb.header)), SEEK_CUR);
-
-
-	/* set the data offset */
-	struct { magic_t magic; u32 size; } fimg_header;
-
-	fread(&fimg_header, sizeof(fimg_header), 1, fp);
-	assert(fimg_header.magic == (magic_t)'FIMG');
-	if (ferror(fp) || feof(fp)) {
-		goto error;
-	}
-
-	narc->data_offset = ftello(fp);
-
-	return OKAY;
-
-	error:
-	free(narc->fatb.records);
-	return FAIL;
-}
-
-
 static const struct format_info *
 format_lookup(magic_t magic)
 {
@@ -394,17 +392,17 @@ format_lookup(magic_t magic)
 	return NULL;
 }
 
+static void *nitro_read(FILE *);
+
 static void *
-narc_load_file(struct NARC *narc, int index)
+narc_load_file(struct NARC *self, int index)
 {
-	assert(narc != NULL);
-	assert(narc->fp != NULL);
+	assert(self != NULL);
+	assert(self->fp != NULL);
 
-	void *chunk;
+	assert(0 <= index && index < self->fatb.header.file_count);
 
-	assert(0 <= index && index < narc->fatb.header.file_count);
-
-	struct fatb_record record = narc->fatb.records[index];
+	struct fatb_record record = self->fatb.records[index];
 
 	assert(record.start <= record.end);
 	off_t chunk_size = record.end - record.start;
@@ -413,13 +411,25 @@ narc_load_file(struct NARC *narc, int index)
 		return NULL;
 	}
 
-	fseeko(narc->fp, narc->data_offset + record.start, SEEK_SET);
+	fseeko(self->fp, self->data_offset + record.start, SEEK_SET);
+
+	if (ferror(self->fp)) {
+		return NULL;
+	}
+
+	return nitro_read(self->fp);
+}
+
+static void *
+nitro_read(FILE *fp)
+{
+	assert(fp != NULL);
+
+	void *chunk;
 
 	magic_t magic;
-
-	fread(&magic, 1, sizeof(magic), narc->fp);
-
-	fseeko(narc->fp, -(signed)(sizeof(magic)), SEEK_CUR);
+	fread(&magic, 1, sizeof(magic), fp);
+	fseeko(fp, -(signed)(sizeof(magic)), SEEK_CUR);
 
 	const struct format_info *fmt = format_lookup(magic);
 
@@ -448,14 +458,14 @@ narc_load_file(struct NARC *narc, int index)
 	}
 
 	if (fmt->read != NULL) {
-		if (fmt->read(chunk, narc->fp)) {
+		if (fmt->read(chunk, fp)) {
 			goto error;
 		}
 	} else {
-		fread(chunk, sizeof(struct standard_header), 1, narc->fp);
+		fread(chunk, sizeof(struct standard_header), 1, fp);
 	}
 
-	if (ferror(narc->fp) || feof(narc->fp)) {
+	if (ferror(fp) || feof(fp)) {
 		goto error;
 	}
 
@@ -467,14 +477,6 @@ narc_load_file(struct NARC *narc, int index)
 	return NULL;
 }
 
-void narc_free(void *buf)
-{
-	struct NARC *self = buf;
-	assert(self != NULL);
-	assert(self->header.magic == (magic_t)'NARC');
-
-	FREE(self->fatb.records);
-}
 
 void
 nitro_free(void *chunk)
@@ -484,7 +486,7 @@ nitro_free(void *chunk)
 		const struct format_info *fmt = format_lookup(header->magic);
 
 		if (fmt != NULL && fmt->free != NULL) {
-			(*fmt->free)(chunk);
+			fmt->free(chunk);
 		}
 	}
 }
@@ -804,20 +806,49 @@ unscramble_pt(u16 *data, int size)
 	}
 }
 
+static struct NARC *
+open_narc(const char *filename)
+{
+	assert(filename != NULL);
+
+	FILE *fp = fopen(filename, "rb");
+	if (fp == NULL) {
+		goto error;
+	}
+
+	struct NARC *narc = nitro_read(fp);
+
+	if (narc == NULL) {
+		goto error;
+	}
+
+	if (narc->header.magic != (magic_t)'CRAN') {
+		warn("Not a NARC");
+		goto error;
+	}
+
+	return narc;
+
+	error:
+	if (errno) {
+		perror("Failed to load NARC");
+	} else {
+		warn("Failed to load NARC");
+	}
+	exit(EXIT_FAILURE);
+}
+
+
 static int
 list(void)
 {
-	struct NARC narc;
+	struct NARC *narc;
 	struct standard_header *chunk;
 
-	narc_init(&narc);
-	if (narc_load(&narc, FILENAME)) {
-		if (errno) perror(NULL);
-		exit(EXIT_FAILURE);
-	}
+	narc = open_narc(FILENAME);
 
-	for (int i = 0; i < narc.fatb.header.file_count; i++) {
-		chunk = narc_load_file(&narc, i);
+	for (int i = 0; i < narc->fatb.header.file_count; i++) {
+		chunk = narc_load_file(narc, i);
 		if (chunk != NULL) {
 			pmagic((chunk)->magic);
 		} else {
@@ -853,14 +884,7 @@ write_sprite(u8 *pixels, int height, int width, struct NCLR *palette, char *outf
 static void
 rip_sprites(void)
 {
-	struct NARC narc;
-
-	narc_init(&narc);
-	if (narc_load(&narc, FILENAME)) {
-		if (errno) perror(NULL);
-		exit(EXIT_FAILURE);
-	}
-
+	struct NARC *narc = open_narc(FILENAME);
 	char outfile[256] = "";
 
 	const struct sprite_dirs {
@@ -894,8 +918,8 @@ rip_sprites(void)
 	MKDIR("back/shiny/female")
 
 	for (int n = 1; n <= 493; n++) {
-		struct NCLR *normal_palette = narc_load_file(&narc, n*6 + 4);
-		struct NCLR *shiny_palette = narc_load_file(&narc, n*6 + 5);
+		struct NCLR *normal_palette = narc_load_file(narc, n*6 + 4);
+		struct NCLR *shiny_palette = narc_load_file(narc, n*6 + 5);
 
 		if (normal_palette == NULL || shiny_palette == NULL) {
 			if (errno) perror(NULL);
@@ -906,7 +930,7 @@ rip_sprites(void)
 		assert(shiny_palette->header.magic == (magic_t)'NCLR');
 
 		for (int i = 0; i < 4; i++) {
-			struct NCGR *sprite = narc_load_file(&narc, n*6 + i);
+			struct NCGR *sprite = narc_load_file(narc, n*6 + i);
 			if (sprite == NULL) {
 				// this is fine
 				continue;
@@ -947,29 +971,21 @@ rip_sprites(void)
 static void
 rip_trainers(void)
 {
-	struct NARC narc;
-
-	narc_init(&narc);
-	if (narc_load(&narc, FILENAME)) {
-		if (errno) perror(NULL);
-		exit(EXIT_FAILURE);
-	}
-
+	struct NARC *narc = open_narc(FILENAME);
 	char outfile[256] = "";
-
-	const int trainer_count = narc.fatb.header.file_count / 2;
+	const int trainer_count = narc->fatb.header.file_count / 2;
 
 	for (int n = 0; n < trainer_count; n++) {
 		sprintf(outfile, "%s/%d.png", OUTDIR, n);
 
-		struct NCGR *sprite = narc_load_file(&narc, n*2 + 0);
+		struct NCGR *sprite = narc_load_file(narc, n*2 + 0);
 		if (sprite == NULL) {
 			if (errno) perror(outfile);
 			continue;
 		}
 		assert(sprite->header.magic == (magic_t)'NCGR');
 
-		struct NCLR *palette = narc_load_file(&narc, n*2 + 1);
+		struct NCLR *palette = narc_load_file(narc, n*2 + 1);
 		if (palette == NULL) {
 			if (errno) perror(outfile);
 			continue;
@@ -1000,22 +1016,14 @@ rip_trainers(void)
 static void
 rip_trainers2(void)
 {
-	struct NARC narc;
-
-	narc_init(&narc);
-	if (narc_load(&narc, FILENAME)) {
-		if (errno) perror(NULL);
-		exit(EXIT_FAILURE);
-	}
-
+	struct NARC *narc = open_narc(FILENAME);
 	char outfile[256] = "";
-
-	const int trainer_count = narc.fatb.header.file_count / 5;
+	const int trainer_count = narc->fatb.header.file_count / 5;
 
 	MKDIR("frames");
 
 	for (int n = 0; n < trainer_count; n++) {
-		struct NCLR *palette = narc_load_file(&narc, n*5 + 1);
+		struct NCLR *palette = narc_load_file(narc, n*5 + 1);
 		if (palette == NULL) {
 			if (errno) perror(NULL);
 			continue;
@@ -1036,7 +1044,7 @@ rip_trainers2(void)
 			}
 			puts(outfile);
 
-			struct NCGR *sprite = narc_load_file(&narc, n*5 + spriteindex);
+			struct NCGR *sprite = narc_load_file(narc, n*5 + spriteindex);
 			if (sprite == NULL) {
 				if (errno) perror(outfile);
 				continue;
@@ -1045,7 +1053,7 @@ rip_trainers2(void)
 
 			if (i == 1) {
 				/* pt for platinum, dp for hgss */
-				unscramble_pt((u16 *)sprite->char_.data,
+				unscramble_dp((u16 *)sprite->char_.data,
 				              sprite->char_.header.data_size/sizeof(u16));
 			}
 
@@ -1060,8 +1068,10 @@ rip_trainers2(void)
 			write_sprite(pixels, height, width, palette, outfile);
 
 			free(pixels);
+			nitro_free(sprite);
 			free(sprite);
 		}
+		nitro_free(palette);
 		free(palette);
 	}
 
