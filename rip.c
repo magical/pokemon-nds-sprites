@@ -1,9 +1,9 @@
 
-#include <stdlib.h> /* EXIT_SUCCESS, EXIT_FAILURE, size_t, calloc, exit, free, malloc */
-#include <stdio.h> /* SEEK_CUR, SEEK_SET, FILE, off_t, feof, ferror, fopen, fread, fseeko, ftello, perror, printf, putchar, sprintf, vfprintf */
+#include <stdlib.h> /* EXIT_FAILURE, EXIT_SUCCESS, NULL, size_t, calloc, exit, free, malloc */
+#include <stdio.h> /* SEEK_CUR, SEEK_SET, FILE, off_t, fclose, feof, ferror, fprintf, fopen, fread, fseeko, ftello, fwrite, perror, printf, putchar, sprintf, vfprintf */
 #include <stdint.h> /* uint8_t, uint16_t, uint32_t */
 #include <stdarg.h> /* va_list, va_end, va_start */
-#include <string.h> /* memset */
+#include <string.h> /* memcpy, memset */
 #include <math.h> /* round */
 
 #include <sys/stat.h> /* mkdir */
