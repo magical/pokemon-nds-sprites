@@ -540,14 +540,24 @@ ncgr_get_pixels(struct NCGR *self, int *height_out, int *width_out)
 	assert(self != NULL);
 	assert(self->char_.data != NULL);
 
-	assert(self->char_.header.width != 0xffff);
-
 	int width, height, size;
-	width = self->char_.header.width * 8;
-	height = self->char_.header.height * 8;
-	size = width * height;
+	if (self->char_.header.width == 0xffff) {
+		// no dimensions, so we'll just have to guess
+		width = 64;
+		switch (self->char_.header.bit_depth) {
+		case 3: size = self->char_.header.data_size * 2; break;
+		case 4: size = self->char_.header.data_size; break;
+		}
+		// poor man's ceil()
+		height = (size + 63) / width;
+	} else {
+		width = self->char_.header.width * 8;
+		height = self->char_.header.height * 8;
+		size = width * height;
+	}
 
 	u8 *pixels = malloc(size);
+	memset(pixels, 0, size);
 
 	if (pixels == NULL) {
 		return NULL;
@@ -583,8 +593,9 @@ ncgr_get_pixels(struct NCGR *self, int *height_out, int *width_out)
 
 	/* untile the image, if necessary */
 
-	if (self->char_.header.tiled == 0) {
+	if ((self->char_.header.tiled & 0xff) == 0) {
 		u8 tmp_px[height][width];
+		memset(tmp_px, 0, size);
 
 		int x, y, tx, ty, cx, cy, i;
 		i = 0;
@@ -921,7 +932,137 @@ rip_sprites(void)
 			write_sprite(pixels, height, width, shiny_palette, outfile);
 
 			free(pixels);
+			free(sprite);
 		}
+
+		free(normal_palette);
+		free(shiny_palette);
+	}
+
+	printf("done\n");
+	exit(EXIT_SUCCESS);
+}
+
+/* for d/p */
+static void
+rip_trainers(void)
+{
+	struct NARC narc;
+
+	narc_init(&narc);
+	if (narc_load(&narc, FILENAME)) {
+		if (errno) perror(NULL);
+		exit(EXIT_FAILURE);
+	}
+
+	char outfile[256] = "";
+
+	const int trainer_count = narc.fatb.header.file_count / 2;
+
+	for (int n = 0; n < trainer_count; n++) {
+		sprintf(outfile, "%s/%d.png", OUTDIR, n);
+
+		struct NCGR *sprite = narc_load_file(&narc, n*2 + 0);
+		if (sprite == NULL) {
+			if (errno) perror(outfile);
+			continue;
+		}
+		assert(sprite->header.magic == (magic_t)'NCGR');
+
+		struct NCLR *palette = narc_load_file(&narc, n*2 + 1);
+		if (palette == NULL) {
+			if (errno) perror(outfile);
+			continue;
+		}
+		assert(palette->header.magic == (magic_t)'NCLR');
+
+		unscramble_pt((u16 *)sprite->char_.data,
+		              sprite->char_.header.data_size/sizeof(u16));
+
+		int height, width;
+		u8 *pixels = ncgr_get_pixels(sprite, &height, &width);
+		if (pixels == NULL) {
+			warn("Error ripping %s.", outfile);
+			continue;
+		}
+
+		write_sprite(pixels, height, width, palette, outfile);
+
+		free(pixels);
+		free(sprite);
+	}
+
+	printf("done\n");
+	exit(EXIT_SUCCESS);
+}
+
+/* for hg/ss */
+static void
+rip_trainers2(void)
+{
+	struct NARC narc;
+
+	narc_init(&narc);
+	if (narc_load(&narc, FILENAME)) {
+		if (errno) perror(NULL);
+		exit(EXIT_FAILURE);
+	}
+
+	char outfile[256] = "";
+
+	const int trainer_count = narc.fatb.header.file_count / 5;
+
+	MKDIR("frames");
+
+	for (int n = 0; n < trainer_count; n++) {
+		struct NCLR *palette = narc_load_file(&narc, n*5 + 1);
+		if (palette == NULL) {
+			if (errno) perror(NULL);
+			continue;
+		}
+		assert(palette->header.magic == (magic_t)'NCLR');
+
+		int spriteindex;
+		for (int i = 0; i < 2; i++) {
+			switch (i) {
+			case 0:
+				spriteindex = 0;
+				sprintf(outfile, "%s/frames/%d.png", OUTDIR, n);
+				break;
+			case 1:
+				spriteindex = 4;
+				sprintf(outfile, "%s/%d.png", OUTDIR, n);
+				break;
+			}
+			puts(outfile);
+
+			struct NCGR *sprite = narc_load_file(&narc, n*5 + spriteindex);
+			if (sprite == NULL) {
+				if (errno) perror(outfile);
+				continue;
+			}
+			assert(sprite->header.magic == (magic_t)'NCGR');
+
+			if (i == 1) {
+				/* pt for platinum, dp for hgss */
+				unscramble_pt((u16 *)sprite->char_.data,
+				              sprite->char_.header.data_size/sizeof(u16));
+			}
+
+			int height, width;
+			u8 *pixels = ncgr_get_pixels(sprite, &height, &width);
+			if (pixels == NULL) {
+				warn("Error ripping %s.", outfile);
+				free(sprite);
+				continue;
+			}
+
+			write_sprite(pixels, height, width, palette, outfile);
+
+			free(pixels);
+			free(sprite);
+		}
+		free(palette);
 	}
 
 	printf("done\n");
@@ -938,4 +1079,6 @@ main(int argc, char *argv[])
 
 	list();
 	//rip_sprites();
+	//rip_trainers();
+	//rip_trainers2();
 }
