@@ -24,11 +24,20 @@
 #define off_t int
 
 
+#define FREE(x) do { free(x); x = NULL; } while (0)
+
 typedef uint8_t u8;
 typedef uint16_t u16;
 typedef uint32_t u32;
 
 typedef u32 magic_t;
+
+enum status {
+	OKAY = 0,
+	FAIL,
+	ABORT,
+	NOMEM,
+};
 
 /******************************************************************************/
 
@@ -116,12 +125,6 @@ struct NCGR {
 
 /* NCLR */
 
-struct NCLR {
-	struct standard_header header;
-
-	struct PLTT *palettes;
-};
-
 struct PLTT {
 	struct {
 		magic_t magic;
@@ -137,6 +140,14 @@ struct PLTT {
 	} header;
 
 	u8 *data;
+};
+
+struct NCLR {
+	struct standard_header header;
+
+	struct PLTT pltt;
+
+	//struct PCMP pcmp;
 };
 
 struct rgba {
@@ -192,20 +203,23 @@ ncgr_read(void *buf, FILE *fp)
 
 	fread(&self->char_.header, sizeof(self->char_.header), 1, fp);
 	if (ferror(fp) || feof(fp)) {
-		return 1;
+		return FAIL;
 	}
+
 	assert(self->char_.header.magic == (magic_t)'CHAR');
 
 	self->char_.data = malloc(self->char_.header.data_size);
 	if (self->char_.data == NULL) {
-		return 1;
+		return NOMEM;
 	}
 
 	fread(self->char_.data, 1, self->char_.header.data_size, fp);
+	if (ferror(fp) || feof(fp)) {
+		FREE(self->char_.data);
+		return FAIL;
+	}
 
-	/* XXX */
-
-	return ferror(fp) || feof(fp);
+	return OKAY;
 }
 
 static int
@@ -214,38 +228,49 @@ nclr_read(void *buf, FILE *fp)
 	struct NCLR *self = buf;
 	fread(&self->header, sizeof(self->header), 1, fp);
 
-	self->palettes = calloc(self->header.chunk_count, sizeof(*self->palettes));
-	if (self->palettes == NULL) {
-		return 1;
-	}
-
-	for (int i = 0; i < self->header.chunk_count; i++) {
-		struct PLTT *chunk = &self->palettes[i];
-		fread(&chunk->header, sizeof(chunk->header), 1, fp);
-		if (ferror(fp) || feof(fp)) {
-			goto error;
-		}
-		assert(chunk->header.magic == (magic_t)'PLTT');
-
-		chunk->data = calloc(chunk->header.data_size, 1);
-		if (chunk->data == NULL) {
-			goto error;
-		}
-		fread(chunk->data, chunk->header.data_size, 1, fp);
-	}
-
+	fread(&self->pltt.header, sizeof(self->pltt.header), 1, fp);
 	if (ferror(fp) || feof(fp)) {
-		goto error;
+		return FAIL;
 	}
-	return 0;
 
-	error:
-	for (int i = 0; i < self->header.chunk_count; i++) {
-		free(self->palettes[i].data);
+	assert(self->pltt.header.magic == (magic_t)'PLTT');
+
+	self->pltt.data = calloc(self->pltt.header.data_size, 1);
+	if (self->pltt.data == NULL) {
+		return NOMEM;
 	}
-	free(self->palettes);
 
-	return 1;
+	fread(self->pltt.data, self->pltt.header.data_size, 1, fp);
+	if (ferror(fp) || feof(fp)) {
+		FREE(self->pltt.data);
+		return FAIL;
+	}
+
+	return OKAY;
+}
+
+static void
+ncgr_free(void *buf) {
+	struct NCGR *ncgr = buf;
+
+	if (ncgr == NULL ||
+	    ncgr->header.magic != (magic_t)'NCGR') {
+		return;
+	}
+
+	FREE(ncgr->char_.data);
+}
+
+static void
+nclr_free(void *buf) {
+	struct NCLR *nclr = buf;
+
+	if (nclr == NULL ||
+	    nclr->header.magic != (magic_t)'NCLR') {
+		return;
+	}
+
+	FREE(nclr->pltt.data);
 }
 
 static const struct format_info {
@@ -255,16 +280,23 @@ static const struct format_info {
 
 	int (*init)(void *);
 	int (*read)(void *, FILE *);
-} formats[] = {
-	{'NCGR', sizeof(struct NCGR), NULL, ncgr_read},
-	{'NCLR', sizeof(struct NCLR), NULL, nclr_read},
+	void (*free)(void *);
+} *formats[] = {
+	#define F & (struct format_info)
+	F{'NCGR', sizeof(struct NCGR), NULL, ncgr_read, ncgr_free},
+	F{'NCLR', sizeof(struct NCLR), NULL, nclr_read, nclr_free},
 
 	/* known but unsupported formats */
-	{'NCER'},
-	{'NMAR'},
-	{'NMCR'},
-	{'NANR'},
-	{0},
+	#define UNSUPPORTED(m) F{.magic = (magic_t)m}
+	UNSUPPORTED('NCER'),
+	UNSUPPORTED('NCER'),
+	UNSUPPORTED('NMAR'),
+	UNSUPPORTED('NMCR'),
+	UNSUPPORTED('NANR'),
+	#undef UNSUPPORTED
+
+	#undef F
+	NULL
 };
 
 
@@ -282,7 +314,7 @@ narc_load(struct NARC *narc, const char *filename)
 
 	FILE *fp = fopen(filename, "rb");
 	if (fp == NULL) {
-		return 1;
+		return NOMEM;
 	}
 
 	narc->fp = fp;
@@ -291,21 +323,21 @@ narc_load(struct NARC *narc, const char *filename)
 	/* 'NARC' is big-endian for some reason */
 	if (narc->header.magic != (magic_t)'CRAN') {
 		warn("Not a NARC");
-		return 1;
+		return FAIL;
 	}
 
 	/* read the FATB chunk */
 	fread(&narc->fatb.header, sizeof(narc->fatb.header), 1, fp);
 	assert(narc->fatb.header.magic == (magic_t)'FATB');
 	if (ferror(fp) || feof(fp)) {
-		return 1;
+		return FAIL;
 	}
 
 	narc->fatb.records = calloc(narc->fatb.header.file_count,
 	                            sizeof(*narc->fatb.records));
 
 	if (narc->fatb.records == NULL) {
-		return 1;
+		return NOMEM;
 	}
 
 	fread(narc->fatb.records,
@@ -328,7 +360,7 @@ narc_load(struct NARC *narc, const char *filename)
 
 
 	/* set the data offset */
-	struct { magic_t magic; u32 size } fimg_header;
+	struct { magic_t magic; u32 size; } fimg_header;
 
 	fread(&fimg_header, sizeof(fimg_header), 1, fp);
 	assert(fimg_header.magic == (magic_t)'FIMG');
@@ -338,13 +370,28 @@ narc_load(struct NARC *narc, const char *filename)
 
 	narc->data_offset = ftello(fp);
 
-	return 0;
+	return OKAY;
 
 	error:
 	free(narc->fatb.records);
-	return 1;
+	return FAIL;
 }
 
+
+static const struct format_info *
+format_lookup(magic_t magic)
+{
+	const struct format_info **fmt = formats;
+
+	while (*fmt != NULL) {
+		if ((*fmt)->magic == magic) {
+			return *fmt;
+		}
+		fmt++;
+	}
+
+	return NULL;
+}
 
 static void *
 narc_load_file(struct NARC *narc, int index)
@@ -373,21 +420,12 @@ narc_load_file(struct NARC *narc, int index)
 
 	fseeko(narc->fp, -(signed)(sizeof(magic)), SEEK_CUR);
 
-	const struct format_info *fmt = formats;
+	const struct format_info *fmt = format_lookup(magic);
 
-	while (fmt->magic != 0) {
-		if (fmt->magic == magic) {
-			break;
-		}
-		fmt++;
-	}
-
-	if (fmt->magic == 0) {
-		warn("Unknown format: %s", STRMAGIC(magic));
+	if (fmt == NULL) {
+		warn("Unknown format: %08x", magic);
 		return NULL;
-	}
-
-	if (fmt->size == 0) {
+	} else if (fmt->size == 0) {
 		warn("Unsupported format: %s", STRMAGIC(magic));
 		chunk = calloc(1, sizeof(struct standard_header));
 	} else {
@@ -398,10 +436,14 @@ narc_load_file(struct NARC *narc, int index)
 		return NULL;
 	}
 
+	/* time to actually load it */
+
 	if (fmt->init != NULL) {
 		if (fmt->init(chunk)) {
 			goto error;
 		}
+	} else {
+		/* it's already zeroed; there's nothing more to do */
 	}
 
 	if (fmt->read != NULL) {
@@ -420,7 +462,30 @@ narc_load_file(struct NARC *narc, int index)
 
 	error:
 	free(chunk);
+
 	return NULL;
+}
+
+void narc_free(void *buf)
+{
+	struct NARC *self = buf;
+	assert(self != NULL);
+	assert(self->header.magic == (magic_t)'NARC');
+
+	FREE(self->fatb.records);
+}
+
+void
+nitro_free(void *chunk)
+{
+	struct standard_header *header = chunk;
+	if (chunk != NULL) {
+		const struct format_info *fmt = format_lookup(header->magic);
+
+		if (fmt != NULL && fmt->free != NULL) {
+			(*fmt->free)(chunk);
+		}
+	}
 }
 
 /******************************************************************************/
@@ -429,14 +494,15 @@ static struct rgba *
 nclr_get_colors(struct NCLR *self, int index)
 {
 	assert(self != NULL);
-	assert(self->palettes != NULL);
 
 	if (!(0 <= index && index < self->header.chunk_count)) {
 		return NULL;
 	}
 
-	struct PLTT *palette = &self->palettes[index];
+	struct PLTT *palette = &self->pltt;
 	struct rgba *colors = NULL;
+
+	assert(palette->data != NULL);
 
 	int size = palette->header.color_count;
 	if (palette->header.bit_depth == 4) {
@@ -507,6 +573,7 @@ ncgr_get_pixels(struct NCGR *self, int *height_out, int *width_out)
 		break;
 	default:
 		warn("Unknown bit depth: %d", self->char_.header.bit_depth);
+		free(pixels);
 		return NULL;
 	}
 	assert(self->char_.header.bit_depth == 3);
@@ -545,7 +612,7 @@ static int
 write_pam(u8 *pixels, struct rgba *colors, int height, int width, FILE *fp)
 {
 	if (pixels == NULL || colors == NULL) {
-		return 1;
+		return NOMEM;
 	}
 
 	int size = width * height;
@@ -565,9 +632,9 @@ write_pam(u8 *pixels, struct rgba *colors, int height, int width, FILE *fp)
 	}
 
 	if (ferror(fp)) {
-		return 1;
+		return FAIL;
 	}
-	return 0;
+	return OKAY;
 }
 
 static int
@@ -585,7 +652,7 @@ ncgr_to_pam(struct NCGR *sprite, struct NCLR *palette, int palette_index, FILE *
 	if (pixels != NULL && colors != NULL) {
 		status = write_pam(pixels, colors, height, width, fp);
 	} else {
-		status = 1;
+		status = NOMEM;
 	}
 
 	free(pixels);
@@ -608,7 +675,7 @@ write_png(u8 *pixels, struct rgba *colors, int height, int width, FILE *fp)
 	if (row_pointers == NULL || palette == NULL) {
 		free(row_pointers);
 		free(palette);
-		return 1;
+		return NOMEM;
 	}
 
 	/* expand the palette */
@@ -636,18 +703,18 @@ write_png(u8 *pixels, struct rgba *colors, int height, int width, FILE *fp)
 	png_structp png = png_create_write_struct(
 		PNG_LIBPNG_VER_STRING, NULL,  NULL, NULL);
 	if (!png) {
-		return 1;
+		return NOMEM;
 	}
 
 	png_infop info = png_create_info_struct(png);
 	if (!info) {
 		png_destroy_write_struct(&png, (png_infopp)NULL);
-		return 1;
+		return NOMEM;
 	}
 
 	if (setjmp(png_jmpbuf(png))) {
 		png_destroy_write_struct(&png, &info);
-		return 1;
+		return FAIL;
 	}
 
 	png_init_io(png, fp);
@@ -671,7 +738,7 @@ write_png(u8 *pixels, struct rgba *colors, int height, int width, FILE *fp)
 	png_destroy_write_struct(&png, &info);
 	free(row_pointers);
 	free(palette);
-	return 0;
+	return OKAY;
 }
 
 
@@ -765,7 +832,7 @@ write_sprite(u8 *pixels, int height, int width, struct NCLR *palette, char *outf
 		}
 		fclose(outfp);
 	} else {
-		perror(NULL);
+		perror(outfile);
 	}
 }
 
@@ -790,7 +857,6 @@ rip_sprites(void)
 		{"back", "back/shiny"},
 		{"female", "shiny/female"},
 		{"", "shiny"},
-		{NULL},
 	};
 
 	#define MKDIR(dir) \
