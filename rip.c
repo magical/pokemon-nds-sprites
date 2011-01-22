@@ -24,6 +24,7 @@
 #define off_t int
 
 
+#define UNUSED(x) ((void)x)
 #define FREE(x) do { free(x); x = NULL; } while (0)
 
 typedef uint8_t u8;
@@ -493,6 +494,8 @@ nitro_free(void *chunk)
 static struct rgba *
 nclr_get_colors(struct NCLR *self, int index)
 {
+	UNUSED(index);
+
 	assert(self != NULL);
 
 	if (!(0 <= index && index < self->header.chunk_count)) {
@@ -930,6 +933,9 @@ rip_sprites(void)
 int
 main(int argc, char *argv[])
 {
-	//list();
-	rip_sprites();
+	UNUSED(argc);
+	UNUSED(argv);
+
+	list();
+	//rip_sprites();
 }
