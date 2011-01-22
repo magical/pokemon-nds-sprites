@@ -646,6 +646,41 @@ ncgr_get_pixels(struct NCGR *self, int *height_out, int *width_out)
 	return pixels;
 }
 
+/* Pokemon and trainer images are encrypted with a simple
+ * stream cipher based on the pokemon rng. */
+
+#define MULT 0x41c64e6dL
+#define ADD 0x6073L
+
+static void
+ncgr_decrypt_dp(struct NCGR *self)
+{
+	const ssize_t size = self->char_.buffer->size / sizeof(u16);
+	u16 *data = (u16*)self->char_.buffer->data;
+
+	u16 seed = data[size - 1];
+	for (ssize_t i = size - 1; i >= 0; i--) {
+		data[i] ^= seed;
+		seed = seed * MULT + ADD;
+	}
+}
+
+static void
+ncgr_decrypt_pt(struct NCGR *self)
+{
+	const ssize_t size = self->char_.buffer->size / sizeof(u16);
+	u16 *data = (u16*)self->char_.buffer->data;
+
+	u16 seed = data[0];
+	for (ssize_t i = 0; i < size; i++) {
+		data[i] ^= seed;
+		seed = seed * MULT + ADD;
+	}
+}
+
+#undef MULT
+#undef ADD
+
 /******************************************************************************/
 
 static int
@@ -807,35 +842,6 @@ ncgr_to_png(struct NCGR *sprite, struct NCLR *palette, int palette_index, FILE *
 
 /******************************************************************************/
 
-#define MULT 0x41c64e6dL
-#define ADD 0x6073L
-
-static void
-unscramble_dp(struct buffer *buffer)
-{
-	const ssize_t size = buffer->size / sizeof(u16);
-	u16 *data = (u16*)buffer->data;
-
-	u16 seed = data[size - 1];
-	for (ssize_t i = size - 1; i >= 0; i--) {
-		data[i] ^= seed;
-		seed = seed * MULT + ADD;
-	}
-}
-
-static void
-unscramble_pt(struct buffer *buffer)
-{
-	const ssize_t size = buffer->size / sizeof(u16);
-	u16 *data = (u16*)buffer->data;
-
-	u16 seed = data[0];
-	for (ssize_t i = 0; i < size; i++) {
-		data[i] ^= seed;
-		seed = seed * MULT + ADD;
-	}
-}
-
 static struct NARC *
 open_narc(const char *filename)
 {
@@ -967,7 +973,7 @@ rip_sprites(void)
 			}
 
 			assert(sprite->header.magic == (magic_t)'NCGR');
-			unscramble_pt(sprite->char_.buffer);
+			ncgr_decrypt_pt(sprite);
 
 			int height, width;
 			u8 *pixels = ncgr_get_pixels(sprite, &height, &width);
@@ -1021,7 +1027,7 @@ rip_trainers(void)
 		}
 		assert(palette->header.magic == (magic_t)'NCLR');
 
-		unscramble_pt(sprite->char_.buffer);
+		ncgr_decrypt_pt(sprite);
 
 		int height, width;
 		u8 *pixels = ncgr_get_pixels(sprite, &height, &width);
@@ -1081,7 +1087,7 @@ rip_trainers2(void)
 
 			if (i == 1) {
 				/* pt for platinum, dp for hgss */
-				unscramble_dp(sprite->char_.buffer);
+				ncgr_decrypt_dp(sprite);
 			}
 
 			int height, width;
