@@ -25,7 +25,18 @@
 
 
 #define UNUSED(x) ((void)x)
-#define FREE(x) do { free(x); x = NULL; } while (0)
+
+// Helpful macros
+// ALLOC and CALLOC fill the size parameter automatically and
+// set the variable to the returned value.
+// FREE sets the variable to NULL
+#define ALLOC(x) ((x) = malloc(sizeof(*(x))))
+#define CALLOC(x, nmemb) ((x) = calloc(nmemb, sizeof(*(x))))
+#define FREE(x) (free(x), ((x) = NULL))
+
+// FREAD sets the size parameter automatically, and also moves
+// the file pointer to the front
+#define FREAD(fp, x, nmemb) (fread(x, sizeof(*(x)), nmemb, fp))
 
 typedef uint8_t u8;
 typedef uint16_t u16;
@@ -256,28 +267,24 @@ narc_read(void *buf, FILE *fp)
 	 * solution */
 	self->fp = fp;
 
-	fread(&self->header, sizeof(self->header), 1, fp);
+	FREAD(fp, &self->header, 1);
 
 	assert(self->header.chunk_count == 3);
 
 	/* read the FATB chunk */
-	fread(&self->fatb.header, sizeof(self->fatb.header), 1, fp);
+	FREAD(fp, &self->fatb.header, 1);
 	assert(self->fatb.header.magic == (magic_t)'FATB');
 	if (ferror(fp) || feof(fp)) {
 		return FAIL;
 	}
 
-	self->fatb.records = calloc(self->fatb.header.file_count,
-	                            sizeof(*self->fatb.records));
+	CALLOC(self->fatb.records, self->fatb.header.file_count);
 
 	if (self->fatb.records == NULL) {
 		return NOMEM;
 	}
 
-	fread(self->fatb.records,
-	      sizeof(*self->fatb.records),
-	      self->fatb.header.file_count,
-	      fp);
+	FREAD(fp, self->fatb.records, self->fatb.header.file_count);
 
 	if (ferror(fp) || feof(fp)) {
 		goto error;
@@ -285,7 +292,7 @@ narc_read(void *buf, FILE *fp)
 
 
 	/* skip the FNTB chunk */
-	fread(&self->fntb.header, sizeof(self->fntb.header), 1, fp);
+	FREAD(fp, &self->fntb.header, 1);
 	assert(self->fntb.header.magic == (magic_t)'FNTB');
 	if (ferror(fp) || feof(fp)) {
 		goto error;
@@ -295,7 +302,7 @@ narc_read(void *buf, FILE *fp)
 	/* set the data offset */
 	struct { magic_t magic; u32 size; } fimg_header;
 
-	fread(&fimg_header, sizeof(fimg_header), 1, fp);
+	FREAD(fp, &fimg_header, 1);
 	assert(fimg_header.magic == (magic_t)'FIMG');
 	if (ferror(fp) || feof(fp)) {
 		goto error;
@@ -314,11 +321,11 @@ static int
 ncgr_read(void *buf, FILE *fp)
 {
 	struct NCGR *self = buf;
-	fread(&self->header, sizeof(self->header), 1, fp);
+	FREAD(fp, &self->header, 1);
 
 	assert(self->header.chunk_count == 1 || self->header.chunk_count == 2);
 
-	fread(&self->char_.header, sizeof(self->char_.header), 1, fp);
+	FREAD(fp, &self->char_.header, 1);
 	if (ferror(fp) || feof(fp)) {
 		return FAIL;
 	}
@@ -330,7 +337,7 @@ ncgr_read(void *buf, FILE *fp)
 		return NOMEM;
 	}
 
-	fread(self->char_.buffer->data, 1, self->char_.buffer->size, fp);
+	FREAD(fp, self->char_.buffer->data, self->char_.buffer->size);
 	if (ferror(fp) || feof(fp)) {
 		FREE(self->char_.buffer);
 		return FAIL;
@@ -343,9 +350,9 @@ static int
 nclr_read(void *buf, FILE *fp)
 {
 	struct NCLR *self = buf;
-	fread(&self->header, sizeof(self->header), 1, fp);
+	FREAD(fp, &self->header, 1);
 
-	fread(&self->pltt.header, sizeof(self->pltt.header), 1, fp);
+	FREAD(fp, &self->pltt.header, 1);
 	if (ferror(fp) || feof(fp)) {
 		return FAIL;
 	}
@@ -357,7 +364,7 @@ nclr_read(void *buf, FILE *fp)
 		return NOMEM;
 	}
 
-	fread(self->pltt.buffer->data, self->pltt.buffer->size, 1, fp);
+	FREAD(fp, self->pltt.buffer->data, self->pltt.buffer->size);
 	if (ferror(fp) || feof(fp)) {
 		FREE(self->pltt.buffer);
 		return FAIL;
@@ -479,7 +486,7 @@ nitro_read(FILE *fp)
 	void *chunk;
 
 	magic_t magic;
-	fread(&magic, 1, sizeof(magic), fp);
+	FREAD(fp, &magic, 1);
 	fseeko(fp, -(signed)(sizeof(magic)), SEEK_CUR);
 
 	const struct format_info *fmt = format_lookup(magic);
@@ -513,7 +520,7 @@ nitro_read(FILE *fp)
 			goto error;
 		}
 	} else {
-		fread(chunk, sizeof(struct standard_header), 1, fp);
+		FREAD(fp, chunk, 1);
 	}
 
 	if (ferror(fp) || feof(fp)) {
@@ -523,7 +530,7 @@ nitro_read(FILE *fp)
 	return chunk;
 
 	error:
-	free(chunk);
+	FREE(chunk);
 
 	return NULL;
 }
@@ -569,14 +576,13 @@ nclr_get_palette(struct NCLR *self, int index)
 		size -= 256;
 	}
 
-	struct palette *palette = malloc(sizeof(palette));
-	if (palette == NULL) {
+	struct palette *palette;
+
+	if (ALLOC(palette) == NULL) {
 		return NULL;
 	}
-
-	palette->colors = calloc(size, sizeof(*palette->colors));
-	if (palette->colors == NULL) {
-		free(palette);
+	if (CALLOC(palette->colors, size) == NULL) {
+		FREE(palette);
 		return NULL;
 	}
 
@@ -666,7 +672,7 @@ ncgr_get_pixels(struct NCGR *self)
 		break;
 	default:
 		warn("Unknown bit depth: %d", self->char_.header.bit_depth);
-		free(pixels);
+		FREE(pixels);
 		return NULL;
 	}
 	assert(self->char_.header.bit_depth == 3);
@@ -754,7 +760,7 @@ image_write_pam(struct image *self, FILE *fp)
 	fprintf(fp, "ENDHDR\n");
 
 	for (size_t i = 0; i < self->pixels->size; i++) {
-		/* XXX bounds checks */
+		/* XXX bounds check for colors[]  */
 		struct rgba *color = &self->palette->colors[self->pixels->data[i]];
 		fwrite(color, 1, sizeof(color), fp);
 	}
@@ -771,14 +777,17 @@ image_write_png(struct image *self, FILE *fp)
 
 	const int bit_depth = self->palette->bit_depth;
 
-	png_bytepp row_pointers = calloc(self->dim.height, sizeof(*row_pointers));
-	png_colorp palette = calloc(self->palette->count, sizeof(*palette));
+	png_bytepp row_pointers = NULL;
+	png_colorp palette = NULL;
 	png_color_8 sig_bit;
 	png_byte trans[1] = {0};
 
+	CALLOC(row_pointers, self->dim.height);
+	CALLOC(palette, self->palette->count);
+
 	if (row_pointers == NULL || palette == NULL) {
-		free(row_pointers);
-		free(palette);
+		FREE(row_pointers);
+		FREE(palette);
 		return NOMEM;
 	}
 
@@ -842,8 +851,8 @@ image_write_png(struct image *self, FILE *fp)
 	png_write_png(png, info, PNG_TRANSFORM_PACKING, NULL);
 
 	png_destroy_write_struct(&png, &info);
-	free(row_pointers);
-	free(palette);
+	FREE(row_pointers);
+	FREE(palette);
 	return OKAY;
 }
 
