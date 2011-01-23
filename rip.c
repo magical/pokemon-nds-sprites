@@ -359,6 +359,9 @@ nclr_read(void *buf, FILE *fp)
 
 	assert(self->pltt.header.magic == (magic_t)'PLTT');
 
+	assert(self->pltt.header.bit_depth == 4);
+	assert(self->pltt.header.color_count == 16);
+
 	self->pltt.buffer = buffer_alloc(self->pltt.header.data_size);
 	if (self->pltt.buffer == NULL) {
 		return NOMEM;
@@ -567,32 +570,35 @@ nclr_get_palette(struct NCLR *self, int index)
 
 	assert(pltt->buffer != NULL);
 
-	int size = pltt->header.color_count;
-	if (pltt->header.bit_depth == 4) {
-		// 8 bpp
-		size = 256;
-	} else if (size > 256) {
-		// huh?
-		size -= 256;
-	}
+	int count = 16;
+
+	/*
+	switch (pltt->header.bit_depth) {
+	case 3: count = 16; break;
+	case 4: count = 256; break;
+	default: assert(!"Unknown bit depth");
+	};
+	*/
 
 	struct palette *palette;
 
 	if (ALLOC(palette) == NULL) {
 		return NULL;
 	}
-	if (CALLOC(palette->colors, size) == NULL) {
+	if (CALLOC(palette->colors, count) == NULL) {
 		FREE(palette);
 		return NULL;
 	}
 
-	palette->count = size;
+	assert(pltt->buffer->size == sizeof(u16) * count);
+
+	palette->count = count;
 	palette->bit_depth = 5; // XXX
 
 	/* unpack the colors */
 
 	u16 *colors16 = (u16 *)pltt->buffer->data;
-	for (int i = 0; i < size; i++) {
+	for (int i = 0; i < count; i++) {
 		palette->colors[i].r = colors16[i] & 0x1f;
 		palette->colors[i].g = (colors16[i] >> 5) & 0x1f;
 		palette->colors[i].b = (colors16[i] >> 10) & 0x1f;
