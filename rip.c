@@ -6,13 +6,18 @@
 #include <string.h> /* memcpy, memset */
 #include <math.h> /* round */
 
-#include <sys/stat.h> /* mkdir */
+#ifdef _WIN32
+# include <direct.h> /* _mkdir */
+# define mkdir(path,mode)  _mkdir(path)
+#else
+# include <sys/stat.h> /* mkdir */
+#endif
 
-#include <error.h> /* EEXIST */
-#include <errno.h> /* errno */
+#include <errno.h> /* EEXIST, errno */
 #include <assert.h> /* assert */
 
 #include "png.h" /* png_*, setjmp */
+#include "zlib.h" /* Z_BEST_SPEED */
 
 
 #define FILENAME "pokegra.narc"
@@ -838,6 +843,10 @@ image_write_png(struct image *self, FILE *fp)
 	}
 
 	png_init_io(png, fp);
+
+	// We're going to recompress the images with advdef later; no sense
+	// wasting time now.
+	png_set_compression_level(png, Z_BEST_SPEED);
 
 	png_set_IHDR(png, info,
 		self->dim.width, self->dim.height,
