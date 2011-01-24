@@ -1,7 +1,7 @@
 
 #include <stdlib.h> /* EXIT_FAILURE, EXIT_SUCCESS, NULL, size_t, calloc, exit, free, malloc */
 #include <stdio.h> /* SEEK_CUR, SEEK_SET, FILE, off_t, fclose, feof, ferror, fprintf, fopen, fread, fseeko, ftello, fwrite, perror, printf, putchar, sprintf, vfprintf */
-#include <stdint.h> /* uint8_t, uint16_t, uint32_t */
+#include <stdint.h> /* int16_t, uint8_t, uint16_t, uint32_t */
 #include <stdarg.h> /* va_list, va_end, va_start */
 #include <string.h> /* memcpy, memset */
 #include <math.h> /* round */
@@ -46,6 +46,8 @@
 typedef uint8_t u8;
 typedef uint16_t u16;
 typedef uint32_t u32;
+
+typedef int16_t s16;
 
 typedef u32 magic_t;
 
@@ -217,6 +219,66 @@ struct NCLR {
 	//struct PCMP pcmp;
 };
 
+
+/* NCER */
+
+struct CEBK_celldata {
+	u16 oam_count;
+	u16 unknown;
+	u32 oam_offset;
+};
+
+struct CEBK_celldata_ex {
+	s16 x_max;
+	s16 y_max;
+	s16 x_min;
+	s16 y_min;
+};
+
+// OAM = Object Attribute Map; see GBATEK for details.
+struct CEBK_OAM {
+	u16 obj_attribute[3];
+};
+
+struct CEBK_partitiondata {
+	u32 start;
+	u32 size;
+};
+
+struct CEBK {
+	struct {
+		magic_t magic;
+		u32 size;
+
+		u16 cell_count;
+		u16 cell_type;
+
+		u32 cell_data_offset;
+		u32 flags;
+
+		u32 partition_data_offset;
+
+		u32 padding[2];
+	} header;
+
+	struct CEBK_celldata *cell_data;
+	// May be NULL if cell_type == 0
+	struct CEBK_celldata_ex *cell_data_ex;
+
+	int oam_count;
+	struct CEBK_OAM *oam_data;
+
+	struct CEBK_partitiondata *partition_data;
+};
+
+struct NCER {
+	struct standard_header header;
+
+	struct CEBK cebk;
+	//struct LABL labl;
+	//struct UEXT uext;
+};
+
 /******************************************************************************/
 
 static char magic_buf[5];
@@ -355,7 +417,7 @@ nclr_read(void *buf, FILE *fp)
 
 	assert(self->pltt.header.magic == (magic_t)'PLTT');
 
-	assert(self->pltt.header.bit_depth == 4);
+	//assert(self->pltt.header.bit_depth == 4);
 	assert(self->pltt.header.color_count == 16);
 
 	self->pltt.buffer = buffer_alloc(self->pltt.header.data_size);
@@ -368,6 +430,60 @@ nclr_read(void *buf, FILE *fp)
 		FREE(self->pltt.buffer);
 		return FAIL;
 	}
+
+	return OKAY;
+}
+
+static int
+ncer_read(void *buf, FILE *fp)
+{
+	struct NCER *self = buf;
+	assert(self != NULL);
+
+	FREAD(fp, &self->header, 1);
+	assert(self->header.magic == (magic_t)'NCER');
+	assert(self->header.chunk_count == 3);
+
+	FREAD(fp, &self->cebk.header, 1);
+	assert(self->cebk.header.magic == (magic_t)'CEBK');
+
+	if (CALLOC(self->cebk.cell_data,
+	           self->cebk.header.cell_count) == NULL) {
+		return NOMEM;
+	}
+	switch (self->cebk.header.cell_type) {
+	case 0:
+		FREAD(fp, self->cebk.cell_data, self->cebk.header.cell_count);
+		break;
+	case 1:
+		if (CALLOC(self->cebk.cell_data_ex,
+		           self->cebk.header.cell_count) == NULL) {
+			FREE(self->cebk.cell_data);
+			return NOMEM;
+		}
+		for (int i = 0; i < (signed long)self->cebk.header.cell_count; i++) {
+			FREAD(fp, &self->cebk.cell_data[i], 1);
+			FREAD(fp, &self->cebk.cell_data_ex[i], 1);
+		}
+		break;
+	default:
+		warn("Unknown cell type: %d", self->cebk.header.cell_type);
+		return FAIL;
+	}
+
+	self->cebk.oam_count = 0;
+	for (int i = 0; i < (signed long)self->cebk.header.cell_count; i++) {
+		self->cebk.oam_count += self->cebk.cell_data[i].oam_count;
+	}
+
+	if (CALLOC(self->cebk.oam_data, self->cebk.oam_count) == NULL) {
+		FREE(self->cebk.cell_data);
+		FREE(self->cebk.cell_data_ex);
+		return FAIL;
+	}
+	FREAD(fp, self->cebk.oam_data, self->cebk.oam_count);
+
+	// partition_data?
 
 	return OKAY;
 }
@@ -403,6 +519,20 @@ nclr_free(void *buf) {
 	}
 }
 
+static void
+ncer_free(void *buf)
+{
+	struct NCER *self = buf;
+	if (self != NULL &&
+	    self->header.magic == (magic_t)'NCER') {
+		FREE(self->cebk.cell_data);
+		FREE(self->cebk.cell_data_ex);
+		FREE(self->cebk.oam_data);
+		FREE(self->cebk.partition_data);
+	}
+}
+
+
 static const struct format_info {
 	magic_t magic;
 
@@ -419,14 +549,13 @@ static const struct format_info {
 	/* lesser formats */
 	F{'NCGR', sizeof(struct NCGR), NULL, ncgr_read, ncgr_free},
 	F{'NCLR', sizeof(struct NCLR), NULL, nclr_read, nclr_free},
+	F{'NCER', sizeof(struct NCER), NULL, ncer_read, ncer_free},
 
 	/* known but unsupported formats */
 	#define UNSUPPORTED(m) F{.magic = (magic_t)m}
-	UNSUPPORTED('NCER'),
-	UNSUPPORTED('NCER'),
+	UNSUPPORTED('NANR'),
 	UNSUPPORTED('NMAR'),
 	UNSUPPORTED('NMCR'),
-	UNSUPPORTED('NANR'),
 	#undef UNSUPPORTED
 
 	#undef F
