@@ -232,15 +232,6 @@ warn(const char *s, ...)
 	fprintf(stderr, "\n");
 }
 
-static void
-pmagic(magic_t magic)
-{
-	for (int i = 0; i < 4; i++) {
-		putchar((magic >> ((3 - i) * 8)) & 0xff);
-	}
-	putchar('\n');
-}
-
 static char *
 strmagic(magic_t magic, char *buf)
 {
@@ -528,7 +519,7 @@ nitro_read(FILE *fp)
 			goto error;
 		}
 	} else {
-		FREAD(fp, chunk, 1);
+		fread(chunk, sizeof(struct standard_header), 1, fp);
 	}
 
 	if (ferror(fp) || feof(fp)) {
@@ -952,9 +943,9 @@ list(void)
 	for (int i = 0; i < (signed long)narc->fatb.header.file_count; i++) {
 		chunk = narc_load_file(narc, i);
 		if (chunk != NULL) {
-			pmagic((chunk)->magic);
+			printf("%3d %s\n", i, STRMAGIC(chunk->magic));
 		} else {
-			printf("(null)\n");
+			printf("%3d (null)\n", i);
 		}
 	}
 
