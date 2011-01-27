@@ -2,8 +2,25 @@
 CC=clang
 mingwCC=i486-mingw32-gcc
 
-rip: rip.c
-	$(CC) -std=c99 -g -o $@ $< -O2 -lpng -Wall -Wextra -Wno-unused-function -Wno-multichar
+# Warnings are good! Enable all of them. -Wall -Wextra
+#
+# Except i have rather a lot of unused functions (TODO: command-line
+# interface), so don't warn about them. -Wno-unused-function.
+#
+# gcc complains about my multi-character char constants (clang doesn't,
+# however). -Wno-multichar
+#
+# Most of my structs are layed out to mirror the file format, so i can be
+# lazy and use fread(). If the compiler adds padding, things will probably
+# blow up. -Wpadded
+# (Unfortunately, clang doesn't recognize this flag.)
+warnings=-Wall -Wextra -Wno-unused-function -Wno-multichar -Wpadded
 
-rip.exe: rip.c
-	$(mingwCC) -std=c99 -g -o $@ $< -O2 -lpng -Wall -Wextra -Wno-unused-function -Wno-multichar
+CFLAGS=-g -O2 -std=c99 $(warnings)
+LDFLAGS=-lpng -lm -lz
+
+rip: rip.c Makefile
+	$(CC) -o $@ $< $(CFLAGS) $(LDFLAGS)
+
+rip.exe: rip.c Makefile
+	$(mingwCC) -o $@ $< $(CFLAGS) $(LDFLAGS)
