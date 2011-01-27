@@ -2,6 +2,7 @@
 #include <stdlib.h> /* EXIT_FAILURE, EXIT_SUCCESS, NULL, size_t, calloc, exit, free, malloc */
 #include <stdio.h> /* SEEK_CUR, SEEK_SET, FILE, off_t, fclose, feof, ferror, fprintf, fopen, fread, fseeko, ftello, fwrite, perror, printf, putchar, sprintf, vfprintf */
 #include <stdint.h> /* int16_t, uint8_t, uint16_t, uint32_t */
+#include <stdbool.h> /* bool, false, true */
 #include <stdarg.h> /* va_list, va_end, va_start */
 #include <string.h> /* memcpy, memset */
 #include <math.h> /* round */
@@ -70,6 +71,11 @@ struct buffer {
 struct dim {
 	int height;
 	int width;
+};
+
+struct coords {
+	int x;
+	int y;
 };
 
 /* a color */
@@ -228,6 +234,7 @@ struct CEBK_celldata {
 	u32 oam_offset;
 };
 
+// XXX huh?
 struct CEBK_celldata_ex {
 	s16 x_max;
 	s16 y_max;
@@ -235,9 +242,24 @@ struct CEBK_celldata_ex {
 	s16 y_min;
 };
 
-// OAM = Object Attribute Map; see GBATEK for details.
-struct CEBK_OAM {
-	u16 obj_attribute[3];
+// OAM = Object Attribute Memory; see GBATEK for details.
+// XXX oam isn't a great name - call this "obj" instead?
+// XXX add some union magic
+struct OAM {
+	s16 y:8;
+	u16 rs_mode:2;
+	u16 obj_mode:2;
+	u16 mosaic_flag:1;
+	u16 color_mode:1;
+	u16 obj_shape:2;
+
+	s16 x:9;
+	u16 rs_param:5;
+	u16 obj_size:2;
+
+	u16 tile_index:10;
+	u16 priority:2;
+	u16 palette_index:4;
 };
 
 struct CEBK_partitiondata {
@@ -266,7 +288,7 @@ struct CEBK {
 	struct CEBK_celldata_ex *cell_data_ex;
 
 	int oam_count;
-	struct CEBK_OAM *oam_data;
+	struct OAM *oam_data;
 
 	struct CEBK_partitiondata *partition_data;
 };
@@ -278,6 +300,16 @@ struct NCER {
 	//struct LABL labl;
 	//struct UEXT uext;
 };
+
+#define D(h,w) ((struct dim){.height=h, .width=w})
+// obj_sizes [size][shape]
+const struct dim obj_sizes[4][4] = {
+	{D(8,8),   D(8,16),  D(16,8),  D(0,0)},
+	{D(16,16), D(8,32),  D(32,8),  D(0,0)},
+	{D(32,32), D(16,32), D(32,16), D(0,0)},
+	{D(64,64), D(32,64), D(64,32), D(0,0)},
+};
+#undef D
 
 /******************************************************************************/
 
@@ -442,7 +474,7 @@ ncer_read(void *buf, FILE *fp)
 
 	FREAD(fp, &self->header, 1);
 	assert(self->header.magic == (magic_t)'NCER');
-	assert(self->header.chunk_count == 3);
+	assert(self->header.chunk_count == 3 || self->header.chunk_count == 1);
 
 	FREAD(fp, &self->cebk.header, 1);
 	assert(self->cebk.header.magic == (magic_t)'CEBK');
@@ -836,6 +868,179 @@ ncgr_get_pixels(struct NCGR *self)
 	return pixels;
 }
 
+static u8
+ncgr_get_pixel(struct NCGR *self, int tile, u32 x, u32 y, u32 cellwidth)
+{
+	assert(self != NULL);
+
+	size_t offset = 0;
+
+	if (self->char_.header.tiled == 0) {
+		// tiled
+		offset += tile * 64;
+		offset += y / 8 * (cellwidth / 8) * 64;
+		offset += x / 8 * 64;
+		offset += y % 8 * 8;
+		offset += x % 8;
+
+		//offset += x % 8 + (x/8 + y/8 * cellwidth + y % 8) * 8;
+	} else {
+		u16 width = self->char_.header.width;
+		// not tiled
+		//offset += x % 8 + (x/8 + y/8 * cellwidth + y % 8) * 8;
+		offset += tile / width * (width * 64);
+		offset += tile % width * 8;
+		offset += y * width * 8;
+		offset += x;
+	}
+
+	u8 pixel;
+	if (self->char_.header.bit_depth == 3) {
+		offset /= 2;
+		pixel = self->char_.buffer->data[offset];
+		if (x & 1) {
+			pixel >>= 4;
+		} else {
+			pixel &= 0xf;
+		}
+	} else {
+		pixel = self->char_.buffer->data[offset];
+	}
+
+	return pixel;
+}
+
+static int
+ncer_draw_cell(struct NCER *self, int index, struct NCGR *ncgr, struct image *image, struct coords frame_offset)
+{
+	assert(self != NULL);
+	assert(self->header.magic == (magic_t)'NCER');
+	assert(ncgr != NULL);
+	assert(image != NULL);
+	assert(image->pixels != NULL);
+
+	struct CEBK_celldata *cell = self->cebk.cell_data + index;
+
+	for (int i = 0; i < cell->oam_count; i++) {
+		struct OAM *oam = (struct OAM *)((u8 *)self->cebk.oam_data + cell->oam_offset) + i;
+
+		// x and y specify the position of the top-left corner of the
+		// frame.
+		// coordinates for rotations have the origin at center of the
+		// frame.
+		//printf("x = %d, y = %d\n", oam->x, oam->y);
+
+		// the real dimensions of the cell
+		struct dim cell_dim = obj_sizes[oam->obj_size][oam->obj_shape];
+
+		//warn("cell_dim = {.height = %d, .width = %d}", cell_dim.height, cell_dim.width);
+		//warn("tile_index = %d", oam->tile_index);
+		assert(ncgr->char_.header.bit_depth == 3);
+
+		// the dimensions of the "on-screen" frame
+		// is either the same as cell_dim, or double
+		struct dim frame_dim = cell_dim;
+		if (oam->rs_mode & 2) {
+			frame_dim.height *= 2;
+			frame_dim.width *= 2;
+		}
+
+		// the affine transform matrix
+		// XXX this is the identity matrix; grab a real one
+		s16 m[4] = {0x0100, 0, 0, 0x0100};
+
+		struct coords transform_offset = {frame_dim.width / 2, frame_dim.height / 2};
+
+		const int rs_mode = oam->rs_mode;
+		int x, y;
+		// fixed-point 8.8
+		s16 x_prime_fx, y_prime_fx;
+		int x_prime, y_prime;
+
+		//warn("transform_offset = {%d, %d}", transform_offset.x, transform_offset.y);
+
+		for (y = 0; y < frame_dim.height; y++) {
+		for (x = 0; x < frame_dim.width; x++) {
+			if (oam->y + frame_offset.y + y < 0 ||
+			    oam->x + frame_offset.x + x < 0) {
+				continue;
+			}
+
+			if (rs_mode & 1) {
+				// affine transformation!
+				// multiply the matrix by the sprite coordinates;
+				// origin at the center of the frame
+				x_prime_fx = (x - transform_offset.x) * m[0] + (y - transform_offset.y) * m[1];
+				y_prime_fx = (x - transform_offset.x) * m[2] + (y - transform_offset.y) * m[3];
+				// grab the integer portion
+				x_prime = (x_prime_fx >> 8) + transform_offset.x;
+				y_prime = (y_prime_fx >> 8) + transform_offset.y;
+			} else {
+				x_prime = x;
+				y_prime = y;
+			}
+
+			//warn("x = %d, y = %d; x_prime = %d, y_prime = %d", x, y, x_prime, y_prime);
+
+			// check whether the transformed coordinates are within the
+			// cell data.
+			if (0 <= x_prime && x_prime < cell_dim.width &&
+			    0 <= y_prime && y_prime < cell_dim.height) {
+				//draw the pixel
+				int pixel_offset = (oam->y + frame_offset.y + y) * image->dim.width
+				                 + (oam->x + frame_offset.x + x);
+				if (0 < pixel_offset && (size_t)pixel_offset < image->pixels->size) {
+					// XXX this is stupid; can't we just grab the whole chunk of pixels?
+					image->pixels->data[pixel_offset] =
+						ncgr_get_pixel(ncgr, oam->tile_index,
+						               x_prime, y_prime, cell_dim.width);
+				}
+			}
+		}
+		}
+	}
+
+	return OKAY;
+}
+
+static int image_draw_square(struct image *self, struct coords start, struct coords end);
+
+static int
+ncer_draw_boxes(struct NCER *self, int index, struct image *image, struct coords offset)
+{
+	assert(self != NULL);
+	assert(self->header.magic == (magic_t)'NCER');
+	assert(image != NULL);
+	assert(image->pixels != NULL);
+
+	struct CEBK_celldata *cell = self->cebk.cell_data + index;
+
+	for (int i = 0; i < cell->oam_count; i++) {
+		struct OAM *oam = (struct OAM *)((u8 *)self->cebk.oam_data + cell->oam_offset) + i;
+
+		// the real dimensions of the cell
+		struct dim frame_dim = obj_sizes[oam->obj_size][oam->obj_shape];
+
+		struct coords topleft;
+		topleft.x = oam->x + offset.x;
+		topleft.y = oam->y + offset.y;
+
+		if (oam->rs_mode & 2) {
+			frame_dim.height *= 2;
+			frame_dim.width *= 2;
+		}
+
+		struct coords bottomright = {
+			.x = topleft.x + frame_dim.width,
+			.y = topleft.y + frame_dim.height,
+		};
+
+		image_draw_square(image, topleft, bottomright);
+	}
+	return OKAY;
+}
+
+
 /* Pokemon and trainer images are encrypted with a simple
  * stream cipher based on the pokemon rng. */
 
@@ -988,6 +1193,77 @@ image_write_png(struct image *self, FILE *fp)
 	png_destroy_write_struct(&png, &info);
 	FREE(row_pointers);
 	FREE(palette);
+	return OKAY;
+}
+
+static int
+image_draw_line(struct image *self, struct coords start, struct coords end)
+{
+	assert(self != NULL);
+	assert(self->pixels != NULL);
+
+	double x, y;
+	int tmp;
+
+	if (start.y > end.y) {
+		tmp = end.y;
+		end.y = start.y;
+		start.y = tmp;
+	}
+	if (start.x > end.x) {
+		tmp = end.x;
+		end.x = start.x;
+		start.x = tmp;
+	}
+
+	x = start.x;
+	y = start.y;
+
+	double inc_x, inc_y;
+	if (end.y - start.y > end.x - start.x) {
+		inc_x = (double)(end.x - start.x) / (end.y - start.y);
+		inc_y = 1.0;
+	} else {
+		inc_x = 1.0;
+		inc_y = (double)(end.y - start.y) / (end.x - start.x);
+	}
+
+	const int width = self->dim.width;
+	u8 (*pixels)[][width] = (u8 (*)[][width])self->pixels->data;
+
+	//warn("(%d, %d) -> (%d, %d)", (int)x, (int)y, end.x, end.y);
+	while (x <= (double)end.x  && y <= (double)end.y) {
+		if (x < width && y < self->dim.height) {
+			(*pixels)[(int)y][(int)x] = 1;
+		}
+		x += inc_x;
+		y += inc_y;
+	}
+
+	return OKAY;
+}
+
+static int
+image_draw_square(struct image *self, struct coords start, struct coords end)
+{
+	assert(self != NULL);
+	assert(self->pixels != NULL);
+
+	// XXX check return codes
+
+	// top line
+	image_draw_line(self, (struct coords){.x = start.x, .y = start.y},
+	                      (struct coords){.x = end.x, .y = start.y});
+	// bottom line
+	image_draw_line(self, (struct coords){.x = start.x, .y = end.y},
+	                      (struct coords){.x = end.x, .y = end.y});
+	// left line
+	image_draw_line(self, (struct coords){.x = start.x, .y = start.y},
+	                      (struct coords){.x = start.x, .y = end.y});
+	// right line
+	image_draw_line(self, (struct coords){.x = end.x, .y = start.y},
+	                      (struct coords){.x = end.x, .y = end.y});
+
 	return OKAY;
 }
 
@@ -1353,6 +1629,164 @@ rip_trainers2(void)
 	exit(EXIT_SUCCESS);
 }
 
+
+static void
+dump_ncer(void)
+{
+	FILE *fp = fopen("venu.ncer", "rb");
+	if (fp == NULL) {
+		warn("Unable to open NCER");
+		exit(EXIT_FAILURE);
+	}
+
+	struct NCER *ncer = nitro_read(fp);
+	if (ncer == NULL) {
+		warn("Unable to read NCER");
+		if (errno) {
+			perror(NULL);
+		}
+	}
+	assert(ncer->header.magic == (magic_t)'NCER');
+
+	printf("ncer.magic = %s\n", STRMAGIC(ncer->header.magic));
+	printf("ncer.size = %u\n", ncer->header.size);
+	printf("ncer.cebk.cell_count = %u\n", ncer->cebk.header.cell_count);
+	printf("ncer.cebk.cell_type = %u\n", ncer->cebk.header.cell_type);
+	printf("ncer.cebk.flags = %x\n", ncer->cebk.header.flags);
+
+
+	for (int i = 0; i < (signed long)ncer->cebk.header.cell_count; i++) {
+		struct CEBK_celldata *cell = &ncer->cebk.cell_data[i];
+		printf("ncer.cebk.cell[%d].oam_count = %u\n", i, cell->oam_count);
+		printf("ncer.cebk.cell[%d].unknown = %u\n", i, cell->unknown);
+		printf("ncer.cebk.cell[%d].oam_offset = %u\n", i, cell->oam_offset);
+		struct OAM *oams = (struct OAM*)((u8 *)ncer->cebk.oam_data + cell->oam_offset);
+
+		for (int j = 0; j < cell->oam_count; j++) {
+			struct OAM *oam = &oams[j];
+			const struct dim *d = &obj_sizes[oam->obj_size][oam->obj_shape];
+
+			printf("oam[%d] = {\n"
+			       "\t.y = %d,\n"
+			       "\t.x = %d,\n"
+			       "\t.color_mode = %d,\n"
+			       "\t.rs_mode = %u,\n"
+			       "\t.rs_param = %u,\n"
+			       "\t.obj_mode = %u,\n"
+			       "\t.obj_shape = %u,\n"
+			       "\t.obj_size = %u,\n"
+			       "\t.tile_index = %u,\n"
+			       "\t.palette_index = %u,\n"
+			       "\t.dim = {.height=%d, .width=%d},\n"
+			       "}\n",
+				j, oam->y, oam->x,
+				oam->color_mode,
+				oam->rs_mode, oam->rs_param,
+				oam->obj_mode, oam->obj_shape, oam->obj_size,
+				oam->tile_index, oam->palette_index,
+				d->height, d->width);
+		}
+	}
+
+	printf("sizeof(OAM) = %u", (unsigned int) sizeof(struct OAM));
+
+	exit(EXIT_SUCCESS);
+}
+
+static void *
+open_nitro(const char *filename, magic_t magic)
+{
+	char magicbuf[5];
+
+	FILE *fp = fopen(filename, "rb");
+	if (fp == NULL) {
+		warn("Unable to open %s", filename);
+		exit(EXIT_FAILURE);
+	}
+
+	void *file = nitro_read(fp);
+	if (file == NULL) {
+		warn("Unable to read %s", filename);
+		if (errno) {
+			perror(NULL);
+		}
+		exit(EXIT_FAILURE);
+	}
+	if (*(magic_t *)file != magic) {
+		warn("\"%s\" is not a %s", filename, strmagic(magic, magicbuf));
+		exit(EXIT_FAILURE);
+	}
+
+	//no fclose()
+	return file;
+}
+
+static void
+render_ncer(void)
+{
+	struct NCER *ncer = open_nitro("venu.ncer", 'NCER');
+	struct NCGR *ncgr = open_nitro("venu-parts.ncgr", 'NCGR');
+	struct NCLR *nclr = open_nitro("venu.nclr", 'NCLR');
+
+	struct image image = {};
+
+	image.dim = (struct dim){96, 96};
+	image.pixels = buffer_alloc(96 * 96);
+	image.palette = nclr_get_palette(nclr, 0);
+
+	if (image.palette == NULL || image.pixels == NULL) {
+		warn("error");
+		exit(EXIT_FAILURE);
+	}
+
+	nitro_free(nclr);
+	FREE(nclr);
+
+	printf("ncer.magic = %s\n", STRMAGIC(ncer->header.magic));
+	printf("ncer.size = %u\n", ncer->header.size);
+	printf("ncer.cebk.cell_count = %u\n", ncer->cebk.header.cell_count);
+	printf("ncer.cebk.cell_type = %u\n", ncer->cebk.header.cell_type);
+
+	int status = OKAY;
+	const int i = 2;
+	struct coords offset = {.x = 48, .y = 48};
+
+	if (ncer_draw_cell(ncer, i, ncgr, &image, offset)) {
+		warn("error drawing cell %d; bailing", i);
+		status = FAIL;
+		goto cleanup;
+	}
+	/*if (ncer_draw_boxes(ncer, i, &image, offset)) {
+		warn("error drawing boxes for cell %d; bailing", i);
+		status = FAIL;
+		goto cleanup;
+	}*/
+
+	FILE *fp = fopen("out.png", "wb");
+	if (fp == NULL) {
+		warn("Could not open \"out.png\"");
+		status = FAIL;
+		goto cleanup;
+	}
+	if (image_write_png(&image, fp)) {
+		warn("Error writing image");
+		status = FAIL;
+		goto cleanup;
+	}
+
+
+	cleanup:
+
+	FREE(image.pixels);
+	FREE(image.palette->colors);
+	FREE(image.palette);
+
+	nitro_free(ncgr);
+	nitro_free(ncer);
+
+	FREE(ncgr);
+	FREE(ncer);
+}
 /******************************************************************************/
 
 int
@@ -1365,4 +1799,6 @@ main(int argc, char *argv[])
 	//rip_sprites();
 	//rip_trainers();
 	//rip_trainers2();
+	//dump_ncer();
+	//render_ncer();
 }
