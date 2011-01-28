@@ -1163,10 +1163,11 @@ ncer_draw_cell(struct NCER *self, int index, struct NCGR *ncgr, struct image *im
 				// origin at the center of the frame
 				x_prime_fx = (x - transform_offset.x) * m[0] + (y - transform_offset.y) * m[1];
 				y_prime_fx = (x - transform_offset.x) * m[2] + (y - transform_offset.y) * m[3];
-				// grab the integer portion
-				x_prime = (x_prime_fx >> 8) + transform_offset.x;
-				y_prime = (y_prime_fx >> 8) + transform_offset.y;
+				// grab the integer portion and convert the coordinates back
+				x_prime = (x_prime_fx >> 8) + cell_dim.width / 2;
+				y_prime = (y_prime_fx >> 8) + cell_dim.height / 2;
 			} else {
+				// XXX implement flips
 				x_prime = x;
 				y_prime = y;
 			}
