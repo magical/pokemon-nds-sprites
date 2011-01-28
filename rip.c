@@ -569,19 +569,21 @@ static const struct format_info {
 	magic_t magic;
 
 	size_t size;
+	void *initializer;
 
 	int (*init)(void *);
 	int (*read)(void *, FILE *);
 	void (*free)(void *);
 } *formats[] = {
 	#define F & (struct format_info)
+	#define F2(magic, type) magic, sizeof (type), &(type ){}
 	/* the NARC signature is big-endian for some reason */
-	F{'CRAN', sizeof(struct NARC), NULL, narc_read, narc_free},
+	F{F2('CRAN', struct NARC), NULL, narc_read, narc_free},
 
 	/* lesser formats */
-	F{'NCGR', sizeof(struct NCGR), NULL, ncgr_read, ncgr_free},
-	F{'NCLR', sizeof(struct NCLR), NULL, nclr_read, nclr_free},
-	F{'NCER', sizeof(struct NCER), NULL, ncer_read, ncer_free},
+	F{F2('NCGR', struct NCGR), NULL, ncgr_read, ncgr_free},
+	F{F2('NCLR', struct NCLR), NULL, nclr_read, nclr_free},
+	F{F2('NCER', struct NCER), NULL, ncer_read, ncer_free},
 
 	/* known but unsupported formats */
 	#define UNSUPPORTED(m) F{.magic = (magic_t)m}
@@ -656,9 +658,9 @@ nitro_read(FILE *fp)
 		return NULL;
 	} else if (fmt->size == 0) {
 		warn("Unsupported format: %s", STRMAGIC(magic));
-		chunk = calloc(1, sizeof(struct standard_header));
+		chunk = malloc(sizeof(struct standard_header));
 	} else {
-		chunk = calloc(1, fmt->size);
+		chunk = malloc(fmt->size);
 	}
 
 	if (chunk == NULL) {
@@ -666,6 +668,16 @@ nitro_read(FILE *fp)
 	}
 
 	/* time to actually load it */
+
+	// simply initializing the structure to all 0s would break on
+	// architectures where the null pointer != 0.
+	if (fmt->initializer != NULL) {
+		memcpy(chunk, fmt->initializer, fmt->size);
+	} else if (fmt->size > 0) {
+		memset(chunk, 0, fmt->size);
+	} else {
+		memset(chunk, 0, sizeof(struct standard_header));
+	}
 
 	if (fmt->init != NULL) {
 		if (fmt->init(chunk)) {
