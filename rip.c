@@ -911,14 +911,8 @@ nitro_free(void *chunk)
 static struct palette *
 nclr_get_palette(struct NCLR *self, int index)
 {
-	UNUSED(index);
-	assert(index == 0);
-
 	assert(self != NULL);
-
-	if (!(0 <= index && index < (signed long)self->header.chunk_count)) {
-		return NULL;
-	}
+	assert(index == 0);
 
 	struct PLTT *pltt = &self->pltt;
 
