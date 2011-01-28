@@ -16,7 +16,8 @@ mingwCC=i486-mingw32-gcc
 # (Unfortunately, clang doesn't recognize this flag.)
 warnings=-Wall -Wextra -Wno-unused-function -Wno-multichar -Wpadded
 
-CFLAGS=-g -O2 -std=c99 $(warnings)
+# _POSIX_C_SOURCE>=200809 is needed for fmemopen(3)
+CFLAGS=-g -O2 -std=c99 -D_POSIX_C_SOURCE=200809L $(warnings)
 LDFLAGS=-lpng -lm -lz
 
 rip: rip.c Makefile

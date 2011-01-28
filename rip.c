@@ -1,6 +1,6 @@
 
 #include <stdlib.h> /* EXIT_FAILURE, EXIT_SUCCESS, NULL, size_t, calloc, exit, free, malloc */
-#include <stdio.h> /* SEEK_CUR, SEEK_SET, FILE, off_t, fclose, feof, ferror, fprintf, fopen, fread, fseeko, ftello, fwrite, perror, printf, putchar, sprintf, vfprintf */
+#include <stdio.h> /* EOF, SEEK_CUR, SEEK_SET, FILE, off_t, fclose, feof, ferror, fgetc, fmemopen, fopen, fprintf, fputc, fread, fseeko, ftello, fwrite, perror, printf, putchar, sprintf, vfprintf */
 #include <stdint.h> /* int16_t, uint8_t, uint16_t, uint32_t */
 #include <stdbool.h> /* bool, false, true */
 #include <stdarg.h> /* va_list, va_end, va_start */
@@ -101,10 +101,22 @@ struct image {
 
 /******************************************************************************/
 
+static void
+warn(const char *s, ...)
+{
+	va_list va;
+	va_start(va, s);
+	vfprintf(stderr, s, va);
+	va_end(va);
+	fprintf(stderr, "\n");
+}
+
+/******************************************************************************/
+
 struct buffer *
 buffer_alloc(size_t size)
 {
-	struct buffer *buffer = malloc(sizeof(struct buffer) + size);
+	struct buffer *buffer = malloc(sizeof(*buffer) + size);
 	if (buffer != NULL) {
 		buffer->size = size;
 		memset(buffer->data, 0, buffer->size);
@@ -114,6 +126,189 @@ buffer_alloc(size_t size)
 }
 
 /* There is no buffer_free() - just use free(). */
+
+/******************************************************************************/
+
+// can't just be 4096 because disp can range from 1..4098
+#define LZSS_BUF_SIZE ((u16)(8192))
+
+enum lzss_mode {
+	LZSS10,
+	LZSS11,
+};
+
+/* internal function */
+static int
+lzss_handle_code(FILE *fp, FILE *out, u8 *buf, u16 *buf_pos, size_t n, size_t *i, int mode)
+{
+	int c, c2, c3;
+	u16 count, disp;
+	if (mode == LZSS11) {
+		c = fgetc(fp);
+		int indicator = c >> 4;
+		switch (indicator) {
+		case 1:
+			// 16-bit count, 12-bit disp
+			c2 = fgetc(fp);
+			c3 = fgetc(fp);
+			count = (c & 0xf) << 12
+				| c2 << 4
+				| c3 >> 4;
+			count += 0x111;
+			disp = (c3 & 0xf) << 8;
+			break;
+		case 0:
+			// 8-bit count, 12-bit disp
+			c2 = fgetc(fp);
+			count = (c & 0xf) << 4
+				| c2 >> 4;
+			count += 0x11;
+			disp = (c2 & 0xf) << 8;
+			break;
+		default:
+			// 4-bit count, 12-bit disp
+			count = indicator;
+			disp = (c & 0xf) << 8;
+			count += 1;
+		}
+		disp |= fgetc(fp);
+		disp += 1;
+	} else if (mode == LZSS10) {
+		// 4-bit count, 12-bit disp
+		c = fgetc(fp);
+		count = c >> 4;
+		count += 3;
+
+		disp = (c & 0xf) << 8;
+		disp |= fgetc(fp);
+		disp += 3;
+	} else {
+		assert(!"unknown lzss mode");
+	}
+
+	if (ferror(fp) || feof(fp)) {
+		return FAIL;
+	}
+
+	assert(disp <= *i);
+	assert(disp < LZSS_BUF_SIZE);
+
+	// should be just (buf_pos - disp), but hrgh
+	u16 src_i = (u16)(*buf_pos + (u16)(LZSS_BUF_SIZE - disp)) % LZSS_BUF_SIZE;
+	u16 dst_i = *buf_pos;
+	for (u16 j = 0; j < count && *i < n; j++, (*i)++) {
+		u8 c = buf[src_i];
+		buf[dst_i] = c;
+		fputc(c, out);
+
+		src_i = (src_i + 1) % LZSS_BUF_SIZE;
+		dst_i = (dst_i + 1) % LZSS_BUF_SIZE;
+	}
+	*buf_pos = dst_i;
+
+	return OKAY;
+}
+
+/* Decompress up to n bytes of an LZSS stream. Does not read the signature. */
+/* On FAIL, some garbage will probably have been written to the output file. */
+static int
+lzss_decompress(FILE *fp, FILE *out, const size_t n, const int mode)
+{
+	assert(fp != NULL);
+	assert(out != NULL);
+
+	u8 lz_buf[LZSS_BUF_SIZE];
+	u16 lz_buf_pos = 0;
+
+	assert(mode == LZSS10 || mode == LZSS11);
+
+	size_t i;
+	unsigned int bitmask;
+	int flags, status;
+	for (;;) {
+		if ((flags = fgetc(fp)) == EOF) {
+			return FAIL;
+		}
+		for (bitmask = 0x80; bitmask != 0; bitmask >>= 1) {
+			if (flags & bitmask) {
+				status = lzss_handle_code(
+					fp, out, lz_buf, &lz_buf_pos, n, &i, mode);
+				if (status) {
+					return status;
+				}
+			} else {
+				int c = fgetc(fp);
+				if (c != EOF) {
+					lz_buf[lz_buf_pos] = c;
+					fputc(c, out);
+				}
+				lz_buf_pos = (lz_buf_pos + 1) % LZSS_BUF_SIZE;
+				i++;
+			}
+
+			if (n <= i) {
+				goto end;
+			}
+		}
+		if (ferror(fp) || ferror(out) || feof(fp)) {
+			return FAIL;
+		}
+	}
+
+	end:
+	return OKAY;
+}
+
+static struct buffer *
+lzss_decompress_file(FILE *fp)
+{
+	assert(fp != NULL);
+
+	//<read the signature and size>
+	int sig;
+	size_t size;
+	int mode;
+
+	fread(&sig, 1, 1, fp);
+	assert(sig == 0x11 || sig == 0x10);
+
+	fread(&size, 3, 1, fp);
+
+	if (ferror(fp) || feof(fp)) {
+		return NULL;
+	}
+
+	struct buffer *buffer = buffer_alloc(size);
+	if (buffer == NULL) {
+		return NULL;
+	}
+
+	FILE *out = fmemopen(buffer->data, buffer->size, "wb");
+	if (out == NULL) {
+		perror("fmemopen");
+		return NULL;
+	}
+
+	mode = (sig == 0x11) ? LZSS11 : LZSS10;
+
+	int status = OKAY;
+	if (lzss_decompress(fp, out, size, mode)) {
+		warn("lzss_decompress failed");
+		status = FAIL;
+	}
+
+	if (fclose(out)) {
+		perror("lzss_decompress_file: fclose");
+		status = FAIL;
+	}
+
+	if (status == OKAY) {
+		return buffer;
+	}
+
+	FREE(buffer);
+	return NULL;
+}
 
 /******************************************************************************/
 
@@ -315,16 +510,6 @@ const struct dim obj_sizes[4][4] = {
 
 static char magic_buf[5];
 #define STRMAGIC(magic) (strmagic((magic), magic_buf))
-
-static void
-warn(const char *s, ...)
-{
-	va_list va;
-	va_start(va, s);
-	vfprintf(stderr, s, va);
-	va_end(va);
-	fprintf(stderr, "\n");
-}
 
 static char *
 strmagic(magic_t magic, char *buf)
