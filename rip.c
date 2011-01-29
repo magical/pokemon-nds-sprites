@@ -538,7 +538,7 @@ narc_read(void *buf, FILE *fp)
 	assert(self != NULL);
 
 	/* For efficiency, we stash the file pointer so we can lazily load
-	 * the contained files - although this doesn't seem like the best
+	 * the contained files - although i'm not sure this is the best
 	 * solution */
 	self->fp = fp;
 
@@ -560,9 +560,8 @@ narc_read(void *buf, FILE *fp)
 	}
 
 	FREAD(fp, self->fatb.records, self->fatb.header.file_count);
-
 	if (ferror(fp) || feof(fp)) {
-		goto error;
+		return FAIL;
 	}
 
 
@@ -570,7 +569,7 @@ narc_read(void *buf, FILE *fp)
 	FREAD(fp, &self->fntb.header, 1);
 	assert(self->fntb.header.magic == (magic_t)'FNTB');
 	if (ferror(fp) || feof(fp)) {
-		goto error;
+		return FAIL;
 	}
 	fseeko(self->fp, (off_t)(self->fntb.header.size - sizeof(self->fntb.header)), SEEK_CUR);
 
@@ -580,16 +579,15 @@ narc_read(void *buf, FILE *fp)
 	FREAD(fp, &fimg_header, 1);
 	assert(fimg_header.magic == (magic_t)'FIMG');
 	if (ferror(fp) || feof(fp)) {
-		goto error;
+		return FAIL;
 	}
 
 	self->data_offset = ftello(fp);
+	if (self->data_offset == -1) {
+		return FAIL;
+	}
 
 	return OKAY;
-
-	error:
-	FREE(self->fatb.records);
-	return FAIL;
 }
 
 static int
@@ -614,7 +612,6 @@ ncgr_read(void *buf, FILE *fp)
 
 	FREAD(fp, self->char_.buffer->data, self->char_.buffer->size);
 	if (ferror(fp) || feof(fp)) {
-		FREE(self->char_.buffer);
 		return FAIL;
 	}
 
@@ -644,7 +641,6 @@ nclr_read(void *buf, FILE *fp)
 
 	FREAD(fp, self->pltt.buffer->data, self->pltt.buffer->size);
 	if (ferror(fp) || feof(fp)) {
-		FREE(self->pltt.buffer);
 		return FAIL;
 	}
 
@@ -675,7 +671,6 @@ ncer_read(void *buf, FILE *fp)
 	case 1:
 		if (CALLOC(self->cebk.cell_data_ex,
 		           self->cebk.header.cell_count) == NULL) {
-			FREE(self->cebk.cell_data);
 			return NOMEM;
 		}
 		for (int i = 0; i < (signed long)self->cebk.header.cell_count; i++) {
@@ -694,10 +689,9 @@ ncer_read(void *buf, FILE *fp)
 	}
 
 	if (CALLOC(self->cebk.oam_data, self->cebk.oam_count) == NULL) {
-		FREE(self->cebk.cell_data);
-		FREE(self->cebk.cell_data_ex);
 		return FAIL;
 	}
+
 	FREAD(fp, self->cebk.oam_data, self->cebk.oam_count);
 
 	// partition_data?
@@ -873,7 +867,17 @@ nitro_read(FILE *fp)
 	}
 
 	if (fmt->read != NULL) {
-		if (fmt->read(chunk, fp)) {
+		switch (fmt->read(chunk, fp)) {
+		case OKAY:
+			break;
+		case ABORT:
+			goto error;
+		case FAIL:
+		case NOMEM:
+		default:
+			if (fmt->free != NULL) {
+				fmt->free(chunk);
+			}
 			goto error;
 		}
 	} else {
