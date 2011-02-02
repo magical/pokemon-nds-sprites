@@ -14,14 +14,35 @@ mingwCC=i486-mingw32-gcc
 # lazy and use fread(). If the compiler adds padding, things will probably
 # blow up. -Wpadded
 # (Unfortunately, clang doesn't recognize this flag.)
-warnings=-Wall -Wextra -Wno-unused-function -Wno-multichar -Wpadded
+warnings:=-Wall -Wextra -Wno-unused-function
+
+ifeq (gcc,$(CC))
+warnings+=-Wno-multichar -Wpadded
+endif
 
 # _POSIX_C_SOURCE>=200809 is needed for fmemopen(3)
 CFLAGS=-g -O2 -std=c99 -D_POSIX_C_SOURCE=200809L $(warnings)
 LDFLAGS=-lpng -lm -lz
 
-rip: rip.c Makefile
-	$(CC) -o $@ $< $(CFLAGS) $(LDFLAGS)
+sources=rip.c common.c lzss.c image.c nitro.c narc.c ncgr.c nclr.c ncer.c
+objects=$(sources:.c=.o)
 
-rip.exe: rip.c Makefile
-	$(mingwCC) -o $@ $< $(CFLAGS) $(LDFLAGS)
+rip: $(objects)
+	$(CC) -o $@ $(objects) $(CFLAGS) $(LDFLAGS)
+
+rip.exe: $(objects)
+	$(mingwCC) -o $@ $(objects) $(CFLAGS) $(LDFLAGS)
+
+rip.o: rip.c common.h lzss.h image.h nitro.h narc.h ncgr.h nclr.h ncer.h Makefile
+common.o: common.c common.h Makefile
+lzss.o: lzss.c lzss.h common.h Makefile
+nitro.o: nitro.c nitro.h narc.h ncgr.h nclr.h ncer.h common.h Makefile
+narc.o: narc.c narc.h nitro.h common.h Makefile
+ncgr.o: ncgr.c ncgr.h nitro.h common.h Makefile
+nclr.o: nclr.c nclr.h nitro.h common.h Makefile
+ncer.o: ncer.c ncer.h nitro.h ncgr.h image.h common.h Makefile
+image.o: image.c image.h common.h
+
+.PHONY: clean
+clean:
+	rm $(objects)
