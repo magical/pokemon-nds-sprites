@@ -135,9 +135,9 @@ lzss_decompress_file(FILE *fp)
 	assert(fp != NULL);
 
 	//<read the signature and size>
-	int sig;
-	size_t size;
-	int mode;
+	int sig = 0;
+	u32 size = 0;
+	int mode = 0;
 
 	fread(&sig, 1, 1, fp);
 	assert(sig == 0x11 || sig == 0x10);
