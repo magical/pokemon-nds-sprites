@@ -131,6 +131,7 @@ lzss_decompress(FILE *fp, FILE *out, const size_t n, const int mode)
 struct buffer *
 lzss_decompress_file(FILE *fp)
 {
+#ifndef _WIN32
 	assert(fp != NULL);
 
 	//<read the signature and size>
@@ -176,5 +177,6 @@ lzss_decompress_file(FILE *fp)
 	}
 
 	FREE(buffer);
+#endif
 	return NULL;
 }
