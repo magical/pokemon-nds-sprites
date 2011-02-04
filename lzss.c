@@ -167,6 +167,16 @@ lzss_decompress_file(FILE *fp)
 		status = FAIL;
 	}
 
+	// check the padding at the end
+	int c;
+	while ((c = fgetc(fp)) != EOF) {
+		if (c != 0xFF) {
+			warn("LZSS: invalid padding");
+			// XXX fail or not?
+			status = FAIL;
+		}
+	}
+
 	if (fclose(out)) {
 		perror("lzss_decompress_file: fclose");
 		status = FAIL;
