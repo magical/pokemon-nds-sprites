@@ -123,6 +123,22 @@ narc_get_file_count(struct NARC *self)
 	return self->fatb.header.file_count;
 }
 
+u32
+narc_get_file_size(struct NARC *self, int index)
+{
+	assert(self != NULL);
+	assert(self->fp != NULL);
+
+	assert(0 <= index && index < (signed long)self->fatb.header.file_count);
+
+	struct fatb_record record = self->fatb.records[index];
+
+	assert(record.start <= record.end);
+	u32 chunk_size = record.end - record.start;
+
+	return chunk_size;
+}
+
 void *
 narc_load_file(struct NARC *self, int index)
 {

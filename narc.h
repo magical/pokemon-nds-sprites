@@ -9,6 +9,7 @@ struct NARC;
 extern struct format_info NARC_format;
 
 extern void *narc_load_file(struct NARC *self, int index);
+extern u32 narc_get_file_size(struct NARC *self, int index);
 extern u32 narc_get_file_count(struct NARC *self);
 
 #endif /* NARC_H */
