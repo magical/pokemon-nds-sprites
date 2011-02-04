@@ -2,6 +2,7 @@
 #define NITRO_H
 
 #include <stdio.h> /* FILE */
+#include <sys/types.h> /* off_t */
 
 #include "common.h" /* struct dim, u8, u16, u32, s16 */
 
@@ -62,7 +63,8 @@ struct format_info {
 /* Public functions */
 
 extern const struct format_info *format_lookup(magic_t magic);
-extern void *nitro_read(FILE *fp);
+// size may be zero unless you're reading compressed data
+extern void *nitro_read(FILE *fp, off_t size);
 extern void nitro_free(void *chunk);
 
 static inline magic_t

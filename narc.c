@@ -146,7 +146,7 @@ narc_load_file(struct NARC *self, int index)
 		return NULL;
 	}
 
-	return nitro_read(self->fp);
+	return nitro_read(self->fp, chunk_size);
 }
 
 /* the NARC signature is big-endian for some reason */

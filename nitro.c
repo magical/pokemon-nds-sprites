@@ -1,10 +1,12 @@
 
 #include <stdlib.h> /* NULL, malloc */
 #include <stdio.h> /* FILE, SEEK_CUR, feof, ferror, fread, fseeko */
-
 #include <string.h> /* memcpy, memset */
 
+#include <sys/types.h> /* off_t */
+
 #include "common.h" /* OKAY, FAIL, ABORT, NOMEM, FREAD, assert, struct dim */
+#include "lzss.h" /* lzss_decompress_buffer */
 #include "nitro.h"
 
 #include "narc.h" /* NARC_format */
@@ -66,17 +68,10 @@ strmagic(magic_t magic, char *buf)
 	return buf;
 }
 
-void *
-nitro_read(FILE *fp)
+static void *
+nitro_read_nocompressed(FILE *fp, magic_t magic)
 {
-	assert(fp != NULL);
-
 	void *chunk;
-
-	magic_t magic;
-	FREAD(fp, &magic, 1);
-	fseeko(fp, -(signed)(sizeof(magic)), SEEK_CUR);
-
 	const struct format_info *fmt = format_lookup(magic);
 
 	if (fmt == NULL) {
@@ -142,6 +137,67 @@ nitro_read(FILE *fp)
 	FREE(chunk);
 
 	return NULL;
+}
+
+static void *
+nitro_read_compressed(struct buffer *buffer)
+{
+	struct buffer *decompressed = lzss_decompress_buffer(buffer);
+	FREE(buffer);
+	if (decompressed == NULL) {
+		return NULL;
+	}
+
+	buffer = decompressed;
+
+	FILE *fp = fmemopen(buffer->data, buffer->size, "rb");
+	if (fp == NULL) {
+		return NULL;
+	}
+	magic_t magic = *(magic_t *)buffer->data;
+	// no recursing for us!
+	void *chunk = nitro_read_nocompressed(fp, magic);
+	fclose(fp);
+	FREE(buffer);
+	return chunk;
+}
+
+/* XXX get rid of the size parameter somehow */
+void *
+nitro_read(FILE *fp, off_t size)
+{
+	assert(fp != NULL);
+
+	magic_t magic;
+	FREAD(fp, &magic, 1);
+
+	// back to the beginning
+	if (fseeko(fp, -(sizeof(magic_t)), SEEK_CUR)) {
+		return NULL;
+	};
+
+	int b = magic & 0xff;
+	if (b == 0x10 || b == 0x11) {
+		//probably compressed data
+		assert(size > 0);
+		struct buffer *buffer = buffer_alloc(size);
+		if (buffer == NULL) {
+			return NULL;
+		}
+		if (fread(buffer->data, 1, size, fp) != size) {
+			return NULL;
+		}
+		if (lzss_check(buffer)) {
+			// nitro_read_compressed will free the buffer
+			return nitro_read_compressed(buffer);
+		} else {
+			// no idea what the file is -- bail
+			FREE(buffer);
+			return NULL;
+		}
+	}
+
+	return nitro_read_nocompressed(fp, magic);
 }
 
 

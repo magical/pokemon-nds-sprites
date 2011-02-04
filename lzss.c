@@ -1,8 +1,9 @@
 
 #include <stdlib.h> /* NULL, size_t, perror */
 #include <stdio.h> /* FILE, EOF, fclose, feof, ferror, fgetc, fmemopen, fputc, fread */
+#include <stdbool.h> /* bool, true, false */
 
-#include "common.h" /* OKAY, FAIL, FREE, assert, buffer_alloc, warn, u8, u16 */
+#include "common.h" /* OKAY, FAIL, FREE, assert, struct buffer, buffer_alloc, warn, u8, u16, u32 */
 
 #include "lzss.h"
 
@@ -189,4 +190,38 @@ lzss_decompress_file(FILE *fp)
 	FREE(buffer);
 #endif
 	return NULL;
+}
+
+struct buffer *
+lzss_decompress_buffer(struct buffer *buffer)
+{
+#ifndef _WIN32
+	assert(buffer != NULL);
+
+	FILE *fp = fmemopen(buffer->data, buffer->size, "rb");
+
+	struct buffer *out = lzss_decompress_file(fp);
+
+	if (fclose(fp)) {
+		perror("lzss_decompress_buffer: fclose");
+	}
+
+	return out;
+#endif
+	return NULL;
+}
+
+/* check whether a buffer looks like valid lzss-compressed data */
+bool
+lzss_check(struct buffer *buffer)
+{
+	if (buffer != NULL && 4 <= buffer->size &&
+	    (buffer->data[0] == '\x10' || buffer->data[0] == '\x11')) {
+		u32 uncompressed_size = *(u32 *)buffer->data >> 8;
+
+		if (buffer->size - 4 < uncompressed_size) {
+			return true;
+		}
+	}
+	return false;
 }

@@ -48,7 +48,7 @@ open_narc(const char *filename)
 		goto error;
 	}
 
-	struct NARC *narc = nitro_read(fp);
+	struct NARC *narc = nitro_read(fp, 0);
 
 	if (narc == NULL) {
 		goto error;
@@ -374,7 +374,7 @@ dump_ncer(void)
 		exit(EXIT_FAILURE);
 	}
 
-	struct NCER *ncer = nitro_read(fp);
+	struct NCER *ncer = nitro_read(fp, 0);
 	if (ncer == NULL) {
 		warn("Unable to read NCER");
 		if (errno) {
@@ -440,7 +440,7 @@ open_nitro(const char *filename, magic_t magic)
 		exit(EXIT_FAILURE);
 	}
 
-	void *file = nitro_read(fp);
+	void *file = nitro_read(fp, 0);
 	if (file == NULL) {
 		warn("Unable to read %s", filename);
 		if (errno) {
