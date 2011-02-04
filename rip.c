@@ -26,11 +26,6 @@
 #define FILENAME "pokegra.narc"
 #define OUTDIR "test"
 
-
-#define fseeko fseek
-#define ftello ftell
-#define off_t int
-
 /******************************************************************************/
 
 static char magic_buf[MAGIC_BUF_SIZE];
