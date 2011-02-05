@@ -14,13 +14,13 @@
 #include "nclr.h" /* NCLR_format */
 #include "ncer.h" /* NCER_format */
 
-#define D(h,w) {.height=h, .width=w}
+#define D(w,h) {.height=h, .width=w}
 // obj_sizes [size][shape]
 struct dim obj_sizes[4][4] = {
-	{D(8,8),   D(8,16),  D(16,8),  D(0,0)},
-	{D(16,16), D(8,32),  D(32,8),  D(0,0)},
-	{D(32,32), D(16,32), D(32,16), D(0,0)},
-	{D(64,64), D(32,64), D(64,32), D(0,0)},
+	{D(8,8),   D(16,8),  D(8,16),  D(0,0)},
+	{D(16,16), D(32,8),  D(8,32),  D(0,0)},
+	{D(32,32), D(32,16), D(16,32), D(0,0)},
+	{D(64,64), D(64,32), D(32,64), D(0,0)},
 };
 #undef D
 
