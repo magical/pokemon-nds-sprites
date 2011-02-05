@@ -1,4 +1,10 @@
-/* NCER */
+/* ncer.c - NCER (cell resource) support
+ *
+ * Copyright © 2011 magical
+ *
+ * This file is part of spriterip; it is licensed under the GNU GPLv3
+ * and comes with NO WARRANTY. See rip.c for details.
+ */
 
 #include <stdlib.h> /* NULL, size_t */
 #include <stdio.h> /* FILE */

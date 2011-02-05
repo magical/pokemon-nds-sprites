@@ -1,3 +1,11 @@
+/* common.c - Definitions of common routines
+ *
+ * Copyright © 2011 magical
+ *
+ * This file is part of spriterip; it is licensed under the GNU GPLv3
+ * and comes with NO WARRANTY. See rip.c for details.
+ */
+
 #include <stdlib.h>  /* size_t, stderr, malloc */
 #include <stdio.h> /* fprintf, vfprintf */
 #include <stdarg.h> /* va_list, va_end, va_start */

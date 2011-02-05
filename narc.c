@@ -1,3 +1,10 @@
+/* narc.c - NARC (archive) support
+ *
+ * Copyright © 2011 magical
+ *
+ * This file is part of spriterip; it is licensed under the GNU GPLv3
+ * and comes with NO WARRANTY. See rip.c for details.
+ */
 
 #include <stdlib.h> /* NULL */
 #include <stdio.h> /* FILE, SEEK_CUR, SEEK_SET, off_t, feof, ferror, fseeko, ftello */
