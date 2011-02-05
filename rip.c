@@ -2,6 +2,7 @@
 #include <stdlib.h> /* EXIT_FAILURE, EXIT_SUCCESS, NULL, exit */
 #include <stdio.h> /* FILE, fclose, fopen, fwrite, perror, printf, sprintf */
 //#include <stdarg.h> /* va_list, va_end, va_start */
+#include <string.h> /* strcat */
 #include <limits.h> /* INT_MAX */
 
 #ifdef _WIN32
@@ -126,6 +127,7 @@ list(void)
 static void
 write_sprite(struct image *image, char *outfile)
 {
+	strcat(outfile, ".png");
 	FILE *outfp = fopen(outfile, "wb");
 	if (outfp != NULL) {
 		if (image_write_png(image, outfp)) {
@@ -215,7 +217,7 @@ rip_sprites(void)
 			assert(nitro_get_magic(ncgr) == (magic_t)'NCGR');
 			ncgr_decrypt_pt(ncgr);
 
-			sprintf(outfile, "%s/%s/%d.png", OUTDIR, d->normal, n);
+			sprintf(outfile, "%s/%s/%d", OUTDIR, d->normal, n);
 
 			image.pixels = ncgr_get_pixels(ncgr);
 			if (image.pixels == NULL) {
@@ -231,7 +233,7 @@ rip_sprites(void)
 			image.palette = normal_palette;
 			write_sprite(&image, outfile);
 
-			sprintf(outfile, "%s/%s/%d.png", OUTDIR, d->shiny, n);
+			sprintf(outfile, "%s/%s/%d", OUTDIR, d->shiny, n);
 			image.palette = shiny_palette;
 			write_sprite(&image, outfile);
 
@@ -338,7 +340,7 @@ rip_bw_sprites(void)
 
 			assert(nitro_get_magic(ncgr) == (magic_t)'NCGR');
 
-			sprintf(outfile, "%s/%s/%d.png", OUTDIR, d->normal, n);
+			sprintf(outfile, "%s/%s/%d", OUTDIR, d->normal, n);
 
 			ncgr_get_dim(ncgr, &image.dim);
 
@@ -359,7 +361,7 @@ rip_bw_sprites(void)
 			image.palette = normal_palette;
 			write_sprite(&image, outfile);
 
-			sprintf(outfile, "%s/%s/%d.png", OUTDIR, d->shiny, n);
+			sprintf(outfile, "%s/%s/%d", OUTDIR, d->shiny, n);
 			image.palette = shiny_palette;
 			write_sprite(&image, outfile);
 
@@ -387,7 +389,7 @@ rip_trainers(void)
 	struct image image = {};
 
 	for (int n = 0; n < trainer_count; n++) {
-		sprintf(outfile, "%s/%d.png", OUTDIR, n);
+		sprintf(outfile, "%s/%d", OUTDIR, n);
 
 		struct NCGR *ncgr = narc_load_file(narc, n*2 + 0);
 		if (ncgr == NULL) {
@@ -474,11 +476,11 @@ rip_trainers2(void)
 			switch (i) {
 			case 0:
 				spriteindex = 0;
-				sprintf(outfile, "%s/frames/%d.png", OUTDIR, n);
+				sprintf(outfile, "%s/frames/%d", OUTDIR, n);
 				break;
 			case 1:
 				spriteindex = 4;
-				sprintf(outfile, "%s/%d.png", OUTDIR, n);
+				sprintf(outfile, "%s/%d", OUTDIR, n);
 				break;
 			}
 			puts(outfile);
