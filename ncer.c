@@ -167,6 +167,12 @@ ncer_draw_cell(struct NCER *self, int index, struct NCGR *ncgr, struct image *im
 		//warn("cell_dim = {.height = %d, .width = %d}", cell_dim.height, cell_dim.width);
 		//warn("tile_index = %d", oam->tile_index);
 
+		struct buffer *pixels = ncgr_get_cell_pixels(
+			ncgr, oam->tile_index, cell_dim);
+		if (pixels == NULL) {
+			return FAIL;
+		}
+
 		// the dimensions of the "on-screen" frame
 		// is either the same as cell_dim, or double
 		struct dim frame_dim = cell_dim;
@@ -221,19 +227,17 @@ ncer_draw_cell(struct NCER *self, int index, struct NCGR *ncgr, struct image *im
 				int pixel_offset = (oam->y + frame_offset.y + y) * image->dim.width
 				                 + (oam->x + frame_offset.x + x);
 				if (0 < pixel_offset && (size_t)pixel_offset < image->pixels->size) {
-					// XXX this is stupid; can't we just grab the whole chunk of pixels?
-					image->pixels->data[pixel_offset] =
-						ncgr_get_pixel(ncgr, oam->tile_index,
-						               x_prime, y_prime, cell_dim.width);
+					image->pixels->data[pixel_offset] = \
+						pixels->data[y_prime * cell_dim.width + x_prime];
 				}
 			}
 		}
 		}
+		FREE(pixels);
 	}
 
 	return OKAY;
 }
-
 
 int
 ncer_draw_boxes(struct NCER *self, int index, struct image *image, struct coords offset)
@@ -261,8 +265,8 @@ ncer_draw_boxes(struct NCER *self, int index, struct image *image, struct coords
 		}
 
 		struct coords bottomright = {
-			.x = topleft.x + frame_dim.width,
-			.y = topleft.y + frame_dim.height,
+			.x = topleft.x + frame_dim.width - 1,
+			.y = topleft.y + frame_dim.height - 1,
 		};
 
 		image_draw_square(image, topleft, bottomright);

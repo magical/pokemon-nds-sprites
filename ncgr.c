@@ -109,13 +109,64 @@ ncgr_get_dim(struct NCGR *self, struct dim *dim)
 	return OKAY;
 }
 
+/* unpack a linear block of pixels from the character data into a buffer */
+static int
+unpack(struct NCGR *self, size_t start, size_t size, u8 *dest)
+{
+	struct buffer *buffer = self->char_.buffer;
+	switch (self->char_.header.bit_depth) {
+	case 3:
+		// 4 bits per pixel
+		assert((start + size) / 2 <= buffer->size);
+		size_t i;
+		for (i = 0; i < size / 2; i++) {
+			u8 byte = buffer->data[start / 2 + i];
+			dest[i*2]     = byte        & 0x0f;
+			dest[i*2 + 1] = (byte >> 4) & 0x0f;
+		}
+		break;
+	case 4:
+		// 8 bits per pixel
+		assert((start + size) <= buffer->size);
+		memcpy(dest, buffer->data + start, size);
+		break;
+	default:
+		warn("Unknown bit depth: %d", self->char_.header.bit_depth);
+		return FAIL;
+	}
+	return OKAY;
+}
+
+static void
+untile(struct buffer *pixels, struct dim dim)
+{
+	// let's allocate a few kilobytes of data on the stack - yeah!
+	u8 tmp_px[dim.height][dim.width];
+	//memset(tmp_px, 0, pixels->size);
+
+	int x, y, tx, ty, cx, cy, i;
+	i = 0;
+	for (y = 0; y < dim.height / 8; y++) {
+	for (x = 0; x < dim.width / 8; x++) {
+		for (ty = 0; ty < 8; ty++) {
+		for (tx = 0; tx < 8; tx++) {
+			cy = y * 8 + ty;
+			cx = x * 8 + tx;
+			tmp_px[cy][cx] = pixels->data[i];
+			i++;
+		}
+		}
+	}
+	}
+
+	memcpy(pixels->data, tmp_px, pixels->size);
+}
+
 struct buffer *
 ncgr_get_pixels(struct NCGR *self)
 {
 	assert(self != NULL);
 	assert(self->char_.buffer != NULL);
-
-	struct buffer *buffer = self->char_.buffer;
 
 	struct dim dim;
 	size_t size;
@@ -127,103 +178,65 @@ ncgr_get_pixels(struct NCGR *self)
 	if (pixels == NULL) {
 		return NULL;
 	}
-	memset(pixels->data, 0, size);
 
-	/* unpack the pixels */
-
-	size_t i;
-	switch (self->char_.header.bit_depth) {
-	case 3:
-		// 4 bits per pixel
-		assert(buffer->size * 2 == (unsigned)size);
-		for (i = 0; i < buffer->size; i++) {
-			u8 byte = buffer->data[i];
-			pixels->data[i*2] = byte & 0x0f;
-			pixels->data[i*2 + 1] = (byte >> 4) & 0x0f;
-		}
-		break;
-	case 4:
-		// 8 bits per pixel
-		assert(buffer->size == (unsigned)size);
-		for (i = 0; i < buffer->size; i++) {
-			pixels->data[i] = buffer->data[i];
-		}
-		break;
-	default:
-		warn("Unknown bit depth: %d", self->char_.header.bit_depth);
+	if (unpack(self, 0, size, pixels->data)) {
 		FREE(pixels);
 		return NULL;
 	}
 	assert(self->char_.header.bit_depth == 3);
 
-	/* untile the image, if necessary */
-
 	if ((self->char_.header.tiled & 0xff) == 0) {
-		// let's allocate a few kilobytes of data on the stack - yeah!
-		u8 tmp_px[dim.height][dim.width];
-		memset(tmp_px, 0, size);
-
-		int x, y, tx, ty, cx, cy, i;
-		i = 0;
-		for (y = 0; y < dim.height / 8; y++) {
-		for (x = 0; x < dim.width / 8; x++) {
-			for (ty = 0; ty < 8; ty++) {
-			for (tx = 0; tx < 8; tx++) {
-				cy = y * 8 + ty;
-				cx = x * 8 + tx;
-				tmp_px[cy][cx] = pixels->data[i];
-				i++;
-			}
-			}
-		}
-		}
-
-		memcpy(pixels->data, tmp_px, size);
+		untile(pixels, dim);
 	}
 
 	return pixels;
 }
 
-u8
-ncgr_get_pixel(struct NCGR *self, int tile, u32 x, u32 y, u32 cellwidth)
+
+struct buffer *
+ncgr_get_cell_pixels(struct NCGR *self, u16 tile, struct dim cell_dim)
 {
 	assert(self != NULL);
+	assert(self->char_.buffer != NULL);
 
-	size_t offset = 0;
+	size_t size = cell_dim.height * cell_dim.width;
 
-	if (self->char_.header.tiled == 0) {
-		// tiled
-		offset += tile * 64;
-		offset += y / 8 * (cellwidth / 8) * 64;
-		offset += x / 8 * 64;
-		offset += y % 8 * 8;
-		offset += x % 8;
-
-		//offset += x % 8 + (x/8 + y/8 * cellwidth + y % 8) * 8;
-	} else {
-		u16 width = self->char_.header.width;
-		// not tiled
-		//offset += x % 8 + (x/8 + y/8 * cellwidth + y % 8) * 8;
-		offset += tile / width * (width * 64);
-		offset += tile % width * 8;
-		offset += y * width * 8;
-		offset += x;
+	struct buffer *pixels = buffer_alloc(size);
+	if (pixels == NULL) {
+		return NULL;
 	}
 
-	u8 pixel;
-	if (self->char_.header.bit_depth == 3) {
-		offset /= 2;
-		pixel = self->char_.buffer->data[offset];
-		if (x & 1) {
-			pixel >>= 4;
-		} else {
-			pixel &= 0xf;
+	if ((self->char_.header.tiled & 0xff) == 0) {
+		size_t start = tile * 64;
+
+		if (unpack(self, start, size, pixels->data)) {
+			goto error;
 		}
+
+		untile(pixels, cell_dim);
 	} else {
-		pixel = self->char_.buffer->data[offset];
+		u16 width = self->char_.header.width; // width in tiles
+		assert(width != 0xffff);
+
+		size_t start_x, start_y, start;
+		int y;
+
+		start_y = (tile / width) * 8;
+		start_x = (tile % width) * 8;
+		for (y = 0; y < cell_dim.height; y++) {
+			start = (start_y + y) * width * 8 + start_x;
+			if (unpack(self, start, cell_dim.width,
+			           &pixels->data[y * cell_dim.width])) {
+				goto error;
+			}
+		}
 	}
 
-	return pixel;
+	return pixels;
+
+error:
+	FREE(pixels);
+	return NULL;
 }
 
 /******************************************************************************/
