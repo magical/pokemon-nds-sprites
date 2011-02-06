@@ -58,7 +58,7 @@ handle_code(FILE *fp, FILE *out, u8 *buf, u16 *buf_pos, size_t n, size_t *i, int
 
 		disp = (c & 0xf) << 8;
 		disp |= fgetc(fp);
-		disp += 3;
+		disp += 1;
 	} else {
 		assert(!"unknown lzss mode");
 	}
@@ -68,11 +68,13 @@ handle_code(FILE *fp, FILE *out, u8 *buf, u16 *buf_pos, size_t n, size_t *i, int
 	}
 
 	assert(disp <= *i);
-	assert(disp < LZSS_BUF_SIZE);
+	assert(disp <= LZSS_BUF_SIZE);
 
 	// should be just (buf_pos - disp), but hrgh
 	u16 src_i = (u16)(*buf_pos + (u16)(LZSS_BUF_SIZE - disp)) % LZSS_BUF_SIZE;
 	u16 dst_i = *buf_pos;
+	// Note: src_i == dst_i is legal: this happens when disp == 4096
+	// (the maximum)
 	for (u16 j = 0; j < count && *i < n; j++, (*i)++) {
 		u8 c = buf[src_i];
 		buf[dst_i] = c;

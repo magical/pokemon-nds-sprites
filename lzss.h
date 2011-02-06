@@ -13,8 +13,7 @@
 
 #include "common.h" /* struct buffer, u16 */
 
-// can't just be 4096 because disp can range from 1..4098
-#define LZSS_BUF_SIZE ((u16)(8192))
+#define LZSS_BUF_SIZE ((u16)(0x1000))
 
 enum lzss_mode {
 	LZSS10,
