@@ -129,10 +129,10 @@ list(void)
 			if (chunk != NULL) {
 				printf("%3d %s\n", i, STRMAGIC(nitro_get_magic(chunk)));
 			} else {
-				printf("%3d ????\n", i);
+				printf("%3d (error)\n", i);
 			}
 		} else {
-			printf("%3d (null)\n", i);
+			printf("%3d (empty)\n", i);
 		}
 	}
 
@@ -370,6 +370,9 @@ rip_bw_sprites(void)
 			if (ncer_draw_cell(ncer, 0, ncgr, &image, offset)) {
 				warn("error drawing cell");
 			}
+			/* if (ncer_draw_boxes(ncer, 0, &image, offset)) {
+				warn("error drawing boxes");
+			} */
 
 			nitro_free(ncgr);
 			FREE(ncgr);
@@ -621,11 +624,11 @@ render_ncer(void)
 		status = FAIL;
 		goto cleanup;
 	}
-	/*if (ncer_draw_boxes(ncer, i, &image, offset)) {
+	/* if (ncer_draw_boxes(ncer, i, &image, offset)) {
 		warn("error drawing boxes for cell %d; bailing", i);
 		status = FAIL;
 		goto cleanup;
-	}*/
+	} */
 
 	FILE *fp = fopen("out.png", "wb");
 	if (fp == NULL) {
