@@ -539,6 +539,42 @@ rip_trainers2(void)
 }
 
 static void
+rip_footprint(void)
+{
+	struct NARC *narc = open_narc(FILENAME);
+
+	struct NCER *ncer = narc_load_file(narc, 4);
+	assert(nitro_get_magic(ncer) == (magic_t)'NCER');
+
+	struct NCGR *ncgr = narc_load_file(narc, 383+5);
+	assert(nitro_get_magic(ncgr) == (magic_t)'NCGR');
+
+	struct NCLR *nclr = narc_load_file(narc, 0);
+	assert(nitro_get_magic(nclr) == (magic_t)'NCLR');
+
+	ncer_dump(ncer, NULL);
+
+	struct dim dim;
+	ncgr_get_dim(ncgr, &dim);
+
+	warn("ncer.dim = {.width=%u, .height=%u}", dim.width, dim.height);
+
+	struct image image = {
+		.palette = nclr_get_palette(nclr, 0),
+		.pixels = buffer_alloc(16*16),
+		.dim = {16,16},
+	};
+
+	struct coords offset = {8, 8};
+	ncer_draw_cell(ncer, 0, ncgr, &image, offset);
+
+	char outfile[256] = "out";
+	write_sprite(&image, outfile);
+
+	exit(EXIT_SUCCESS);
+}
+
+static void
 dump_ncer(void)
 {
 	struct NCER *ncer = open_nitro("venu.ncer", 'NCER');
@@ -631,6 +667,7 @@ main(int argc, char *argv[])
 	//rip_bw_sprites();
 	//rip_trainers();
 	//rip_trainers2();
+	//rip_footprint();
 	//dump_ncer();
 	//render_ncer();
 }

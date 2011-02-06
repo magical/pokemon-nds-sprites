@@ -29,7 +29,8 @@ struct CHAR {
 		u16 width;
 
 		u32 bit_depth;
-		u32 padding;
+		// see GBATEK. http://nocash.emubase.de/gbatek.htm#dsvideoobjs
+		u32 vram_mode;
 		u32 tiled;
 
 		u32 data_size;
@@ -60,6 +61,9 @@ ncgr_read(void *buf, FILE *fp)
 	}
 
 	assert(self->char_.header.magic == (magic_t)'CHAR');
+
+	//warn("vram_mode: %x", self->char_.header.vram_mode);
+	//warn("tiled: %x", self->char_.header.tiled);
 
 	self->char_.buffer = buffer_alloc(self->char_.header.data_size);
 	if (self->char_.buffer == NULL) {
@@ -114,6 +118,22 @@ ncgr_get_dim(struct NCGR *self, struct dim *dim)
 	}
 
 	return OKAY;
+}
+
+static size_t
+get_boundary_size(struct NCGR *self)
+{
+	// OBJ mode
+	if (1) {
+		if ((self->char_.header.vram_mode & 0x10) == 0) {
+			return 5;
+		} else {
+			return 5 + ((self->char_.header.vram_mode >> 20) & 0x3);
+		}
+	} else {
+		//XXX bitmap mode
+	}
+	return 5;
 }
 
 /* unpack a linear block of pixels from the character data into a buffer */
@@ -214,7 +234,7 @@ ncgr_get_cell_pixels(struct NCGR *self, u16 tile, struct dim cell_dim)
 	}
 
 	if ((self->char_.header.tiled & 0xff) == 0) {
-		size_t start = tile * 64;
+		size_t start = (tile << get_boundary_size(self)) * 2;
 
 		if (unpack(self, start, size, pixels->data)) {
 			goto error;

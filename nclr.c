@@ -117,7 +117,7 @@ nclr_get_palette(struct NCLR *self, int index)
 		return NULL;
 	}
 
-	assert(pltt->buffer->size == sizeof(u16) * count);
+	assert(pltt->buffer->size >= sizeof(u16) * count);
 
 	palette->count = count;
 	palette->bit_depth = 5; // XXX
