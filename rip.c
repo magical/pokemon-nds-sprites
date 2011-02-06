@@ -538,70 +538,15 @@ rip_trainers2(void)
 	exit(EXIT_SUCCESS);
 }
 
-#if 0
 static void
 dump_ncer(void)
 {
-	FILE *fp = fopen("venu.ncer", "rb");
-	if (fp == NULL) {
-		warn("Unable to open NCER");
-		exit(EXIT_FAILURE);
-	}
+	struct NCER *ncer = open_nitro("venu.ncer", 'NCER');
 
-	struct NCER *ncer = nitro_read(fp, 0);
-	if (ncer == NULL) {
-		warn("Unable to read NCER");
-		if (errno) {
-			perror(NULL);
-		}
-	}
-	assert(nitro_get_magic(ncer) == (magic_t)'NCER');
-
-	printf("ncer.magic = %s\n", STRMAGIC(ncer->header.magic));
-	printf("ncer.size = %u\n", ncer->header.size);
-	printf("ncer.cebk.cell_count = %u\n", ncer->cebk.header.cell_count);
-	printf("ncer.cebk.cell_type = %u\n", ncer->cebk.header.cell_type);
-	printf("ncer.cebk.flags = %x\n", ncer->cebk.header.flags);
-
-
-	for (int i = 0; i < (signed long)ncer->cebk.header.cell_count; i++) {
-		struct CEBK_celldata *cell = &ncer->cebk.cell_data[i];
-		printf("ncer.cebk.cell[%d].oam_count = %u\n", i, cell->oam_count);
-		printf("ncer.cebk.cell[%d].unknown = %u\n", i, cell->unknown);
-		printf("ncer.cebk.cell[%d].oam_offset = %u\n", i, cell->oam_offset);
-		struct OAM *oams = (struct OAM*)((u8 *)ncer->cebk.oam_data + cell->oam_offset);
-
-		for (int j = 0; j < cell->oam_count; j++) {
-			struct OAM *oam = &oams[j];
-			const struct dim *d = &obj_sizes[oam->obj_size][oam->obj_shape];
-
-			printf("oam[%d] = {\n"
-			       "\t.y = %d,\n"
-			       "\t.x = %d,\n"
-			       "\t.color_mode = %d,\n"
-			       "\t.rs_mode = %u,\n"
-			       "\t.rs_param = %u,\n"
-			       "\t.obj_mode = %u,\n"
-			       "\t.obj_shape = %u,\n"
-			       "\t.obj_size = %u,\n"
-			       "\t.tile_index = %u,\n"
-			       "\t.palette_index = %u,\n"
-			       "\t.dim = {.height=%d, .width=%d},\n"
-			       "}\n",
-				j, oam->y, oam->x,
-				oam->color_mode,
-				oam->rs_mode, oam->rs_param,
-				oam->obj_mode, oam->obj_shape, oam->obj_size,
-				oam->tile_index, oam->palette_index,
-				d->height, d->width);
-		}
-	}
-
-	printf("sizeof(OAM) = %u", (unsigned int) sizeof(struct OAM));
+	ncer_dump(ncer, NULL);
 
 	exit(EXIT_SUCCESS);
 }
-#endif
 
 static void
 render_ncer(void)

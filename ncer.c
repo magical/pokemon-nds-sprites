@@ -7,7 +7,7 @@
  */
 
 #include <stdlib.h> /* NULL, size_t */
-#include <stdio.h> /* FILE */
+#include <stdio.h> /* FILE, stdout */
 
 #include "nitro.h" /* struct format_info, struct standard_header, struct OAM, magic_t, format_header */
 #include "ncgr.h" /* struct NCGR, ncgr_get_pixel */
@@ -146,6 +146,63 @@ struct format_info NCER_format = {
 /******************************************************************************/
 
 /* Public functions */
+
+void
+ncer_dump(struct NCER *self, FILE *fp)
+{
+	assert(self != NULL);
+	assert(nitro_get_magic(self) == (magic_t)'NCER');
+
+	if (fp == NULL) {
+		fp = stdout;
+	}
+
+	char magic_buf[MAGIC_BUF_SIZE];
+
+	fprintf(fp, "ncer.magic = %s\n", strmagic(self->header.magic, magic_buf));
+	fprintf(fp, "ncer.size = %u\n", self->header.size);
+	fprintf(fp, "ncer.cebk.cell_count = %u\n", self->cebk.header.cell_count);
+	fprintf(fp, "ncer.cebk.cell_type = %u\n", self->cebk.header.cell_type);
+	fprintf(fp, "ncer.cebk.flags = %x\n", self->cebk.header.flags);
+
+
+	for (int i = 0; i < (signed long)self->cebk.header.cell_count; i++) {
+		struct CEBK_celldata *cell = &self->cebk.cell_data[i];
+		fprintf(fp, "ncer.cebk.cell[%d].oam_count = %u\n", i, cell->oam_count);
+		fprintf(fp, "ncer.cebk.cell[%d].unknown = %u\n", i, cell->unknown);
+		fprintf(fp, "ncer.cebk.cell[%d].oam_offset = %u\n", i, cell->oam_offset);
+		struct OAM *oams = (struct OAM*)((u8 *)self->cebk.oam_data + cell->oam_offset);
+
+		for (int j = 0; j < cell->oam_count; j++) {
+			struct OAM *oam = &oams[j];
+			const struct dim *d = &obj_sizes[oam->obj_size][oam->obj_shape];
+
+			fprintf(fp,
+				"oam[%d] = {\n"
+				"\t.y = %d,\n"
+				"\t.x = %d,\n"
+				"\t.color_mode = %d,\n"
+				"\t.rs_mode = %u,\n"
+				"\t.rs_param = %u,\n"
+				"\t.obj_mode = %u,\n"
+				"\t.obj_shape = %u,\n"
+				"\t.obj_size = %u,\n"
+				"\t.tile_index = %u,\n"
+				"\t.palette_index = %u,\n"
+				"\t.dim = {.height=%d, .width=%d},\n"
+				"}\n",
+				j,
+				oam->y, oam->x,
+				oam->color_mode,
+				oam->rs_mode, oam->rs_param,
+				oam->obj_mode, oam->obj_shape, oam->obj_size,
+				oam->tile_index, oam->palette_index,
+				d->height, d->width);
+		}
+	}
+
+	//printf("sizeof(OAM) = %u", (unsigned int) sizeof(struct OAM));
+}
 
 int
 ncer_draw_cell(struct NCER *self, int index, struct NCGR *ncgr, struct image *image, struct coords frame_offset)
