@@ -24,16 +24,20 @@ endif
 CFLAGS=-g -O2 -std=c99 -D_POSIX_C_SOURCE=200809L $(warnings)
 LDFLAGS=-lpng -lm -lz
 
-sources=rip.c common.c lzss.c image.c nitro.c narc.c ncgr.c nclr.c ncer.c
+sources=common.c lzss.c image.c nitro.c narc.c ncgr.c nclr.c ncer.c
 objects=$(sources:.c=.o)
 
-rip: $(objects)
-	$(CC) -o $@ $(objects) $(CFLAGS) $(LDFLAGS)
+rip: rip.o $(objects)
+	$(CC) -o $@ $< $(objects) $(CFLAGS) $(LDFLAGS)
 
-rip.exe: $(objects)
-	$(mingwCC) -o $@ $(objects) $(CFLAGS) $(LDFLAGS)
+rip.exe: rip.o $(objects)
+	$(mingwCC) -o $@ $< $(objects) $(CFLAGS) $(LDFLAGS)
+
+ripscript: ripscript.o $(objects)
+	$(CC) -o $@ $< $(objects) $(LDFLAGS) -lguile -pthread
 
 rip.o: rip.c common.h lzss.h image.h nitro.h narc.h ncgr.h nclr.h ncer.h Makefile
+ripscript.o: ripscript.c nitro.h narc.h Makefile
 common.o: common.c common.h Makefile
 lzss.o: lzss.c lzss.h common.h Makefile
 nitro.o: nitro.c nitro.h narc.h ncgr.h nclr.h ncer.h common.h Makefile
