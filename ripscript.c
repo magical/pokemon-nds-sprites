@@ -19,16 +19,29 @@
 #include <stdio.h>
 #include <libguile.h>
 
+#include "common.h"
 #include "nitro.h"
 #include "narc.h"
+#include "ncgr.h"
+#include "nclr.h"
+#include "image.h"
 
 static scm_t_bits nitro_tag;
-
+static scm_t_bits image_tag;
 
 static SCM hello_world(void)
 {
 	printf("hello, world\n");
 	return SCM_BOOL_F;
+}
+
+static void assert_nitro_type(magic_t magic, SCM s_nitro)
+{
+	scm_assert_smob_type(nitro_tag, s_nitro);
+	void *nitro = (void *) SCM_SMOB_DATA(s_nitro);
+	if (nitro == NULL || nitro_get_magic(nitro) != magic) {
+		scm_wrong_type_arg("", SCM_ARGn, s_nitro);
+	}
 }
 
 static SCM load_narc(SCM s_filename)
@@ -56,7 +69,7 @@ static SCM load_narc(SCM s_filename)
 
 static SCM file_count(SCM obj)
 {
-	scm_assert_smob_type(nitro_tag, obj);
+	assert_nitro_type('CRAN', obj);
 	void *data = (void *) SCM_SMOB_DATA(obj);
 	struct NARC *narc = data;
 
@@ -65,7 +78,7 @@ static SCM file_count(SCM obj)
 
 static SCM get_file_size(SCM s_narc, SCM s_n)
 {
-	scm_assert_smob_type(nitro_tag, s_narc);
+	assert_nitro_type('CRAN', s_narc);
 	void *data = (void *) SCM_SMOB_DATA(s_narc);
 	struct NARC *narc = data;
 
@@ -78,7 +91,7 @@ static SCM get_magic(SCM obj);
 
 static SCM load_narc_file(SCM s_narc, SCM s_n, SCM s_type)
 {
-	scm_assert_smob_type(nitro_tag, s_narc);
+	assert_nitro_type('CRAN', s_narc);
 	void *data = (void *) SCM_SMOB_DATA(s_narc);
 	struct NARC *narc = data;
 
@@ -135,6 +148,109 @@ static size_t free_nitro(SCM obj)
 	return 0;
 }
 
+static SCM make_image(void)
+{
+	struct image *image = scm_gc_malloc(sizeof(struct image), "image");
+	image->pixels = NULL;
+	image->palette = NULL;
+	image->dim = (struct dim){0,0};
+	SCM_RETURN_NEWSMOB(image_tag, image);
+}
+
+static size_t free_image(SCM obj)
+{
+	struct image *image = (void *) SCM_SMOB_DATA(obj);
+	free(image->pixels);
+	if (image->palette != NULL) {
+		free(image->palette->colors);
+		free(image->palette);
+	}
+	scm_gc_free(image, sizeof(struct image),"image");
+	return 0;
+}
+
+static SCM decrypt_pt(SCM obj)
+{
+	assert_nitro_type('NCGR', obj);
+	struct NCGR *ncgr = (void *) SCM_SMOB_DATA(obj);
+	ncgr_decrypt_pt(ncgr);
+
+	return SCM_UNSPECIFIED;
+}
+
+static SCM image_set_pixels_from_ncgr(SCM s_image, SCM s_ncgr)
+{
+	scm_assert_smob_type(image_tag, s_image);
+	assert_nitro_type('NCGR', s_ncgr);
+
+	struct image *image = (void *) SCM_SMOB_DATA(s_image);
+	struct NCGR *ncgr = (void *) SCM_SMOB_DATA(s_ncgr);
+
+	struct buffer *oldpixels = image->pixels;
+
+	struct buffer *pixels = ncgr_get_pixels(ncgr);
+	if (pixels == NULL) {
+		SCM s = scm_from_locale_symbol("ncgr-error");
+		scm_error(s, "image-set-pixels-from-ncgr", "Error getting pixels", SCM_UNDEFINED, SCM_UNDEFINED);
+	}
+
+	image->pixels = pixels;
+	free(oldpixels);
+
+	ncgr_get_dim(ncgr, &image->dim);
+
+	return SCM_UNSPECIFIED;
+}
+
+static SCM image_set_palette_from_nclr(SCM s_image, SCM s_nclr)
+{
+	scm_assert_smob_type(image_tag, s_image);
+	assert_nitro_type('NCLR', s_nclr);
+
+	struct image *image = (void *) SCM_SMOB_DATA(s_image);
+	struct NCLR *nclr = (void *) SCM_SMOB_DATA(s_nclr);
+
+	struct palette *oldpalette = image->palette;
+
+	struct palette *palette = nclr_get_palette(nclr, 0);
+	if (palette == NULL) {
+		SCM s = scm_from_locale_symbol("nclr-error");
+		scm_error(s, "image-set-palette-from-nclr", "Error getting palette", SCM_UNDEFINED, SCM_UNDEFINED);
+	}
+
+	image->palette = palette;
+
+	if (oldpalette != NULL) {
+		free(oldpalette->colors);
+		free(oldpalette);
+	}
+
+	return SCM_UNSPECIFIED;
+}
+
+static SCM image_save_png(SCM obj, SCM s_filename)
+{
+	scm_assert_smob_type(image_tag, obj);
+	scm_dynwind_begin(0);
+
+	struct image *image = (void *) SCM_SMOB_DATA(obj);
+	char *filename = scm_to_locale_string(s_filename);
+	scm_dynwind_free(filename);
+
+	FILE *fp = fopen(filename, "wb");
+	if (fp == NULL) {
+		scm_syserror("image-save-png");
+	}
+
+	image_write_png(image, fp);
+
+	fclose(fp);
+
+	scm_dynwind_end();
+
+	return SCM_UNSPECIFIED;
+}
+
 static void
 main_callback(void *data, int argc, char *argv[])
 {
@@ -143,12 +259,21 @@ main_callback(void *data, int argc, char *argv[])
 	nitro_tag = scm_make_smob_type("nitro", 0);
 	scm_set_smob_free(nitro_tag, free_nitro);
 
+	image_tag = scm_make_smob_type("image", sizeof(struct image));
+	scm_set_smob_free(image_tag, free_image);
+
 	scm_c_define_gsubr("hello-world", 0, 0, 0, hello_world);
 	scm_c_define_gsubr("load-narc", 1, 0, 0, load_narc);
 	scm_c_define_gsubr("narc-file-count", 1, 0, 0, file_count);
 	scm_c_define_gsubr("narc-get-file-size", 2, 0, 0, get_file_size);
 	scm_c_define_gsubr("narc-load-file", 2, 1, 0, load_narc_file);
 	scm_c_define_gsubr("get-magic", 1, 0, 0, get_magic);
+	scm_c_define_gsubr("make-image", 0, 0, 0, make_image);
+	scm_c_define_gsubr("ncgr-decrypt-pt", 1, 0, 0, decrypt_pt);
+	scm_c_define_gsubr("image-set-pixels-from-ncgr", 2, 0, 0, image_set_pixels_from_ncgr);
+	scm_c_define_gsubr("image-set-palette-from-nclr", 2, 0, 0, image_set_palette_from_nclr);
+	scm_c_define_gsubr("image-save-png", 2, 0, 0, image_save_png);
+
 	scm_shell(argc, argv);
 }
 
