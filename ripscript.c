@@ -46,7 +46,7 @@ static SCM load_narc(SCM s_filename)
 	struct NARC *narc = nitro_read(fp, 0);
 	if (narc == NULL) {
 		SCM symbol = scm_from_locale_symbol("misc-error");
-		scm_error(symbol, "load-narc", "Could not load narc", SCM_UNSPECIFIED, SCM_UNSPECIFIED);
+		scm_error(symbol, "load-narc", "Could not load narc", SCM_UNDEFINED, SCM_UNDEFINED);
 	}
 
 	scm_dynwind_end();
@@ -85,7 +85,7 @@ static SCM load_narc_file(SCM s_narc, SCM s_n)
 	void *nitro = narc_load_file(narc, n);
 	if (nitro == NULL) {
 		SCM s = scm_from_locale_symbol("narc-error");
-		scm_error(s, "narc-load-file", "Error loading file from narc", SCM_UNSPECIFIED, SCM_UNSPECIFIED);
+		scm_error(s, "narc-load-file", "Error loading file from narc", SCM_UNDEFINED, SCM_UNDEFINED);
 	}
 
 	SCM_RETURN_NEWSMOB(nitro_tag, nitro);
