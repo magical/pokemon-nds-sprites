@@ -165,7 +165,7 @@ static size_t free_image(SCM obj)
 		free(image->palette->colors);
 		free(image->palette);
 	}
-	scm_gc_free(image, sizeof(struct image),"image");
+	scm_gc_free(image, sizeof(struct image), "image");
 	return 0;
 }
 
