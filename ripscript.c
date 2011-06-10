@@ -101,7 +101,7 @@ static SCM get_magic(SCM obj)
 	char buf[MAGIC_BUF_SIZE];
 	strmagic(magic, buf);
 
-	SCM s_magic = scm_from_locale_string(buf);
+	SCM s_magic = scm_from_locale_symbol(buf);
 
 	return s_magic;
 }
