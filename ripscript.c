@@ -74,7 +74,9 @@ static SCM get_file_size(SCM s_narc, SCM s_n)
 	return scm_from_int(narc_get_file_size(narc, n));
 }
 
-static SCM load_narc_file(SCM s_narc, SCM s_n)
+static SCM get_magic(SCM obj);
+
+static SCM load_narc_file(SCM s_narc, SCM s_n, SCM s_type)
 {
 	scm_assert_smob_type(nitro_tag, s_narc);
 	void *data = (void *) SCM_SMOB_DATA(s_narc);
@@ -88,7 +90,25 @@ static SCM load_narc_file(SCM s_narc, SCM s_n)
 		scm_error(s, "narc-load-file", "Error loading file from narc", SCM_UNDEFINED, SCM_UNDEFINED);
 	}
 
-	SCM_RETURN_NEWSMOB(nitro_tag, nitro);
+	SCM s_nitro;
+	SCM_NEWSMOB(s_nitro, nitro_tag, nitro);
+
+	if (s_type == SCM_UNDEFINED) { }
+	else if (scm_is_symbol(s_type)) {
+		SCM s_magic = get_magic(s_nitro);
+		if (!scm_is_eq(s_magic, s_type)) { goto error; }
+	} else {
+		scm_wrong_type_arg("narc-load-file", SCM_ARG3, s_type);
+	}
+
+	return s_nitro;
+
+error:
+	{
+	SCM s = scm_from_locale_symbol("narc-error");
+	SCM args = scm_list_1(s_type);
+	scm_error(s, "narc-load-file", "Expected a ~a", args, SCM_UNDEFINED);
+	}
 }
 
 static SCM get_magic(SCM obj)
@@ -127,7 +147,7 @@ main_callback(void *data, int argc, char *argv[])
 	scm_c_define_gsubr("load-narc", 1, 0, 0, load_narc);
 	scm_c_define_gsubr("narc-file-count", 1, 0, 0, file_count);
 	scm_c_define_gsubr("narc-get-file-size", 2, 0, 0, get_file_size);
-	scm_c_define_gsubr("narc-load-file", 2, 0, 0, load_narc_file);
+	scm_c_define_gsubr("narc-load-file", 2, 1, 0, load_narc_file);
 	scm_c_define_gsubr("get-magic", 1, 0, 0, get_magic);
 	scm_shell(argc, argv);
 }
