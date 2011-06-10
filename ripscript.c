@@ -52,9 +52,6 @@ static SCM load_narc(SCM s_filename)
 	scm_dynwind_end();
 
 	SCM_RETURN_NEWSMOB(nitro_tag, narc);
-
-error:
-	return SCM_BOOL_F;
 }
 
 static SCM file_count(SCM obj)
@@ -121,6 +118,8 @@ static size_t free_nitro(SCM obj)
 static void
 main_callback(void *data, int argc, char *argv[])
 {
+	(void)data;
+
 	nitro_tag = scm_make_smob_type("nitro", 0);
 	scm_set_smob_free(nitro_tag, free_nitro);
 
