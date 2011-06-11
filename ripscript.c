@@ -178,6 +178,15 @@ static SCM decrypt_pt(SCM obj)
 	return SCM_UNSPECIFIED;
 }
 
+static SCM decrypt_dp(SCM obj)
+{
+	assert_nitro_type('NCGR', obj);
+	struct NCGR *ncgr = (void *) SCM_SMOB_DATA(obj);
+	ncgr_decrypt_dp(ncgr);
+
+	return SCM_UNSPECIFIED;
+}
+
 static SCM image_set_pixels_from_ncgr(SCM s_image, SCM s_ncgr)
 {
 	scm_assert_smob_type(image_tag, s_image);
@@ -270,6 +279,7 @@ main_callback(void *data, int argc, char *argv[])
 	scm_c_define_gsubr("get-magic", 1, 0, 0, get_magic);
 	scm_c_define_gsubr("make-image", 0, 0, 0, make_image);
 	scm_c_define_gsubr("ncgr-decrypt-pt", 1, 0, 0, decrypt_pt);
+	scm_c_define_gsubr("ncgr-decrypt-dp", 1, 0, 0, decrypt_dp);
 	scm_c_define_gsubr("image-set-pixels-from-ncgr", 2, 0, 0, image_set_pixels_from_ncgr);
 	scm_c_define_gsubr("image-set-palette-from-nclr", 2, 0, 0, image_set_palette_from_nclr);
 	scm_c_define_gsubr("image-save-png", 2, 0, 0, image_save_png);
