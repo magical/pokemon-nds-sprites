@@ -9,7 +9,7 @@
 
 #include "nitro.h" /* struct format_info */
 #include "image.h" /* struct image */
-#include "common.h" /* struct coords */
+#include "common.h" /* struct coords, fx16 */
 
 /* declare the NCER structure */
 struct NCER;
@@ -19,6 +19,7 @@ extern struct format_info NCER_format;
 /* forward declaration of NCGR */
 struct NCGR;
 
+extern int ncer_draw_cell_t(struct NCER *self, int index, struct NCGR *ncgr, struct image *image, struct coords frame_offset, fx16 transform[4]);
 extern int ncer_draw_cell(struct NCER *self, int index, struct NCGR *ncgr, struct image *image, struct coords frame_offset);
 extern int ncer_draw_boxes(struct NCER *self, int index, struct image *image, struct coords offset);
 void ncer_dump(struct NCER *self, FILE *fp);

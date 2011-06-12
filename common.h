@@ -42,6 +42,9 @@ typedef uint32_t u32;
 
 typedef int16_t s16;
 
+typedef s16 v16; // 1.3.12 fixed-point
+typedef s16 fx16; // 1.7.8 fixed-point
+
 enum status {
 	OKAY = 0,
 	FAIL,

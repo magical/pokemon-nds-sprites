@@ -23,7 +23,7 @@ endif
 CFLAGS=-g -O2 -std=c99 -D_POSIX_C_SOURCE=200809L $(warnings)
 LDFLAGS=-lpng -lm -lz
 
-sources=common.c lzss.c image.c nitro.c narc.c ncgr.c nclr.c ncer.c
+sources=common.c lzss.c image.c nitro.c narc.c ncgr.c nclr.c ncer.c nanr.c
 objects=$(sources:.c=.o)
 
 rip: rip.o $(objects)
@@ -36,7 +36,7 @@ ripscript: ripscript.o $(objects)
 	$(CC) -o $@ $< $(objects) $(LDFLAGS) -lguile -pthread
 
 rip.o: rip.c common.h lzss.h image.h nitro.h narc.h ncgr.h nclr.h ncer.h Makefile
-ripscript.o: ripscript.c nitro.h narc.h Makefile
+ripscript.o: ripscript.c common.h image.h nitro.h narc.h ncgr.h nclr.h nanr.h Makefile
 common.o: common.c common.h Makefile
 lzss.o: lzss.c lzss.h common.h Makefile
 nitro.o: nitro.c nitro.h narc.h ncgr.h nclr.h ncer.h common.h Makefile
@@ -44,6 +44,7 @@ narc.o: narc.c narc.h nitro.h common.h Makefile
 ncgr.o: ncgr.c ncgr.h nitro.h common.h Makefile
 nclr.o: nclr.c nclr.h nitro.h common.h Makefile
 ncer.o: ncer.c ncer.h nitro.h ncgr.h image.h common.h Makefile
+nanr.o: nanr.c nanr.h nitro.h ncgr.h ncer.h image.h common.h Makefile
 image.o: image.c image.h common.h
 
 .PHONY: clean

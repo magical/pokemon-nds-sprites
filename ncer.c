@@ -8,11 +8,12 @@
 
 #include <stdlib.h> /* NULL, size_t */
 #include <stdio.h> /* FILE, stdout */
+#include <limits.h> /* INT_MAX, INT_MIN */
 
 #include "nitro.h" /* struct format_info, struct standard_header, struct OAM, magic_t, format_header */
 #include "ncgr.h" /* struct NCGR, ncgr_get_pixel */
 #include "image.h" /* struct image */
-#include "common.h" /* OKAY, FAIL, NOMEM, CALLOC, FREAD, assert, struct dim, struct coords, u8, u16, u32, s16 */
+#include "common.h" /* OKAY, FAIL, NOMEM, CALLOC, FREAD, assert, struct dim, struct coords, u8, u16, u32, s16, fx16 */
 
 #include "ncer.h"
 
@@ -138,9 +139,9 @@ ncer_free(void *buf)
 
 struct format_info NCER_format = {
 	format_header('NCER', struct NCER),
-	NULL, /* info */
-	ncer_read,
-	ncer_free
+
+	.read = ncer_read,
+	.free = ncer_free,
 };
 
 /******************************************************************************/
@@ -204,8 +205,213 @@ ncer_dump(struct NCER *self, FILE *fp)
 	//printf("sizeof(OAM) = %u", (unsigned int) sizeof(struct OAM));
 }
 
+#define check_range(a, b, c) ((a) <= (b) && (b) < (c))
+
+/* Render an object onto an image, possibly applying a transformation. */
+// XXX this largely duplicates obj_draw. refactor.
+static int
+image_render(struct image *self, struct coords offset,
+             struct image *source, fx16 transform[4], struct coords center)
+{
+	int y, x;
+	int y2, x2;
+
+	//warn("[%f,%f,%f,%f]", transform[0]/256.0, transform[1]/256.0,
+	//                      transform[2]/256.0, transform[3]/256.0);
+	//warn("size=%d,%d center=%d,%d", source->dim.width, source->dim.height,
+	//                                center.x, center.y);
+
+	for (y = 0; y < source->dim.height; y++) {
+	for (x = 0; x < source->dim.width; x++) {
+		int pixel_index = (offset.y + y - center.y) * self->dim.width
+		                + (offset.x + x - center.x);
+		if (!check_range(0, pixel_index, self->pixels->size)) {
+			continue;
+		}
+		if (self->pixels->data[pixel_index] != 0) {
+			continue;
+		}
+
+		if (transform) {
+			/* An arithmetic right shift on a twos-complement
+			 * signed integer is equivalent to a floored division,
+			 * which is exactly what we want. */
+			x2 = (((x - center.x) * transform[0] +
+			       (y - center.y) * transform[1]) >> 8) + center.x;
+			y2 = (((x - center.x) * transform[2] +
+			       (y - center.y) * transform[3]) >> 8) + center.y;
+		} else {
+			x2 = x;
+			y2 = y;
+		}
+
+		// check whether the transformed coordinates are within the
+		// cell data.
+		int source_pixel_index = y2 * source->dim.width + x2;
+		if (!check_range(0, x2, source->dim.width) ||
+		    !check_range(0, y2, source->dim.height)) {
+			continue;
+		}
+		if (!check_range(0, source_pixel_index, source->pixels->size)) {
+			continue;
+		}
+
+		//draw the pixel
+		self->pixels->data[pixel_index] =
+		    source->pixels->data[source_pixel_index];
+	}
+	}
+	return OKAY;
+}
+
+static int
+obj_draw(struct OAM *oam, struct NCGR *ncgr, struct image *image,
+         struct coords frame_offset, fx16 transform[4])
+{
+	// x and y specify the position of the top-left corner of the frame.
+	// coordinates for rotations have the origin at center of the frame.
+	//printf("x = %d, y = %d\n", oam->x, oam->y);
+
+	// the real dimensions of the cell
+	struct dim cell_dim = obj_sizes[oam->obj_size][oam->obj_shape];
+
+	//warn("cell_dim = {.height = %d, .width = %d}", cell_dim.height, cell_dim.width);
+	//warn("tile_index = %d", oam->tile_index);
+
+	struct buffer *pixels =
+	    ncgr_get_cell_pixels(ncgr, oam->tile_index, cell_dim);
+	if (pixels == NULL) {
+		return FAIL;
+	}
+
+	// the dimensions of the "on-screen" frame
+	// is either the same as cell_dim, or double
+	struct dim frame_dim = cell_dim;
+	if (oam->rs_mode & 2) {
+		frame_dim.height *= 2;
+		frame_dim.width *= 2;
+	}
+
+	struct coords transform_offset = {frame_dim.width / 2, frame_dim.height / 2};
+
+	int rs_mode = oam->rs_mode;
+	int x, y;
+	// fixed-point 8.8
+	s16 x_prime_fx, y_prime_fx;
+	int x_prime, y_prime;
+
+	if (transform == NULL) { rs_mode &= ~1; }
+
+	//warn("transform_offset = {%d, %d}", transform_offset.x, transform_offset.y);
+
+	for (y = 0; y < frame_dim.height; y++) {
+	for (x = 0; x < frame_dim.width; x++) {
+		if (oam->y + frame_offset.y + y < 0 ||
+		    oam->x + frame_offset.x + x < 0) {
+			continue;
+		}
+
+		if (rs_mode & 1) {
+			// affine transformation!
+			// multiply the matrix by the sprite coordinates;
+			// origin at the center of the frame
+			x_prime_fx = (x - transform_offset.x) * transform[0] + (y - transform_offset.y) * transform[1];
+			y_prime_fx = (x - transform_offset.x) * transform[2] + (y - transform_offset.y) * transform[3];
+			// grab the integer portion and convert the coordinates back
+			x_prime = (x_prime_fx >> 8) + transform_offset.x;
+			y_prime = (y_prime_fx >> 8) + transform_offset.y;
+		} else {
+			// XXX implement flips
+			x_prime = x;
+			y_prime = y;
+		}
+
+		if (rs_mode & 2) {
+			x_prime -= cell_dim.width / 2;
+			y_prime -= cell_dim.height / 2;
+		}
+
+		//warn("x = %d, y = %d; x_prime = %d, y_prime = %d", x, y, x_prime, y_prime);
+
+		// check whether the transformed coordinates are within the
+		// cell data.
+		if (0 <= x_prime && x_prime < cell_dim.width &&
+		    0 <= y_prime && y_prime < cell_dim.height) {
+			//draw the pixel
+			int pixel_offset = (oam->y + frame_offset.y + y) * image->dim.width
+					 + (oam->x + frame_offset.x + x);
+			if (0 <= pixel_offset && (size_t)pixel_offset < image->pixels->size) {
+				/*u8 pixel = pixels->data[y_prime * cell_dim.width + x_prime];
+				if (pixel != 0) {
+					image->pixels->data[pixel_offset] = pixel;
+				}*/
+				if (image->pixels->data[pixel_offset] == 0) {
+					image->pixels->data[pixel_offset] =
+					  pixels->data[y_prime * cell_dim.width + x_prime];
+				}
+			}
+		}
+	}
+	}
+	FREE(pixels);
+	return OKAY;
+}
+
+static int
+render(struct NCER *self, int index, struct NCGR *ncgr, struct image *image, struct coords offset)
+{
+	struct CEBK_celldata *cell = self->cebk.cell_data + index;
+	struct OAM *objs = (void *)((u8*)self->cebk.oam_data + cell->oam_offset);
+
+	for (int i = 0; i < cell->oam_count; i++) {
+		struct OAM *obj = &objs[i];
+
+		/*if(obj->rs_mode == 1) {
+			warn("transform, not doubled");
+		} else if (!(obj->rs_mode & 1)) {
+			warn("not transformed");
+		}*/
+
+		if (obj_draw(obj, ncgr, image, offset, NULL)) {
+			return FAIL;
+		}
+	}
+	return OKAY;
+}
+
+static void
+ncer_get_size(struct NCER *self, int index, struct dim *dim, struct coords *center)
+{
+	struct CEBK_celldata *cell = self->cebk.cell_data + index;
+	struct OAM *objs = (void *)((u8*)self->cebk.oam_data + cell->oam_offset);
+
+	struct coords topleft = {INT_MAX, INT_MAX},
+	              bottomright = {INT_MIN, INT_MIN};
+
+	#define min(a,b) ((a) < (b) ? (a) : (b))
+	#define max(a,b) ((a) > (b) ? (a) : (b))
+
+	for (int i = 0; i < cell->oam_count; i++) {
+		struct OAM *obj = &objs[i];
+		struct dim cell_dim = obj_sizes[obj->obj_size][obj->obj_shape];
+		if (obj->rs_mode & 2) {
+			cell_dim.width *= 2;
+			cell_dim.height *= 2;
+		}
+		topleft.x = min(topleft.x, obj->x);
+		topleft.y = min(topleft.y, obj->y);
+		bottomright.x = max(bottomright.x, obj->x + cell_dim.width);
+		bottomright.y = max(bottomright.y, obj->y + cell_dim.height);
+	}
+
+	dim->width = bottomright.x - topleft.x;
+	dim->height = bottomright.y - topleft.y;
+	center->x = 0 - topleft.x;
+	center->y = 0 - topleft.y;
+}
+
 int
-ncer_draw_cell(struct NCER *self, int index, struct NCGR *ncgr, struct image *image, struct coords frame_offset)
+ncer_draw_cell_t(struct NCER *self, int index, struct NCGR *ncgr, struct image *image, struct coords offset, fx16 transform[4])
 {
 	assert(self != NULL);
 	assert(self->header.magic == (magic_t)'NCER');
@@ -213,93 +419,47 @@ ncer_draw_cell(struct NCER *self, int index, struct NCGR *ncgr, struct image *im
 	assert(image != NULL);
 	assert(image->pixels != NULL);
 
-	struct CEBK_celldata *cell = self->cebk.cell_data + index;
+	//transform[0] = 0; transform[1] = -0x100; transform[2] = 0x100; transform[3] = 0;
+	//transform = (s16[4]){0xb5,-0xb5,0xb5,0xb5};
 
-	for (int i = 0; i < cell->oam_count; i++) {
-		struct OAM *oam = (struct OAM *)((u8 *)self->cebk.oam_data + cell->oam_offset) + i;
+	/* First we render the objs as-is onto a blank image, then we
+	 * render and transform that image onto the destination image. */
 
-		// x and y specify the position of the top-left corner of the
-		// frame.
-		// coordinates for rotations have the origin at center of the
-		// frame.
-		//printf("x = %d, y = %d\n", oam->x, oam->y);
-
-		// the real dimensions of the cell
-		struct dim cell_dim = obj_sizes[oam->obj_size][oam->obj_shape];
-
-		//warn("cell_dim = {.height = %d, .width = %d}", cell_dim.height, cell_dim.width);
-		//warn("tile_index = %d", oam->tile_index);
-
-		struct buffer *pixels = ncgr_get_cell_pixels(
-			ncgr, oam->tile_index, cell_dim);
-		if (pixels == NULL) {
-			return FAIL;
-		}
-
-		// the dimensions of the "on-screen" frame
-		// is either the same as cell_dim, or double
-		struct dim frame_dim = cell_dim;
-		if (oam->rs_mode & 2) {
-			frame_dim.height *= 2;
-			frame_dim.width *= 2;
-		}
-
-		// the affine transform matrix
-		// XXX this is the identity matrix; grab a real one
-		s16 m[4] = {0x0100, 0, 0, 0x0100};
-
-		struct coords transform_offset = {frame_dim.width / 2, frame_dim.height / 2};
-
-		const int rs_mode = oam->rs_mode;
-		int x, y;
-		// fixed-point 8.8
-		s16 x_prime_fx, y_prime_fx;
-		int x_prime, y_prime;
-
-		//warn("transform_offset = {%d, %d}", transform_offset.x, transform_offset.y);
-
-		for (y = 0; y < frame_dim.height; y++) {
-		for (x = 0; x < frame_dim.width; x++) {
-			if (oam->y + frame_offset.y + y < 0 ||
-			    oam->x + frame_offset.x + x < 0) {
-				continue;
-			}
-
-			if (rs_mode & 1) {
-				// affine transformation!
-				// multiply the matrix by the sprite coordinates;
-				// origin at the center of the frame
-				x_prime_fx = (x - transform_offset.x) * m[0] + (y - transform_offset.y) * m[1];
-				y_prime_fx = (x - transform_offset.x) * m[2] + (y - transform_offset.y) * m[3];
-				// grab the integer portion and convert the coordinates back
-				x_prime = (x_prime_fx >> 8) + cell_dim.width / 2;
-				y_prime = (y_prime_fx >> 8) + cell_dim.height / 2;
-			} else {
-				// XXX implement flips
-				x_prime = x;
-				y_prime = y;
-			}
-
-			//warn("x = %d, y = %d; x_prime = %d, y_prime = %d", x, y, x_prime, y_prime);
-
-			// check whether the transformed coordinates are within the
-			// cell data.
-			if (0 <= x_prime && x_prime < cell_dim.width &&
-			    0 <= y_prime && y_prime < cell_dim.height) {
-				//draw the pixel
-				int pixel_offset = (oam->y + frame_offset.y + y) * image->dim.width
-				                 + (oam->x + frame_offset.x + x);
-				if (0 < pixel_offset && (size_t)pixel_offset < image->pixels->size) {
-					image->pixels->data[pixel_offset] = \
-						pixels->data[y_prime * cell_dim.width + x_prime];
-				}
-			}
-		}
-		}
-		FREE(pixels);
+	/* I first tried implementing this by just fixing up the obj
+	 * coordinates, but that didn't really work - it left very
+	 * visible gaps between the objs. */
+	struct image cell_image;
+	struct coords center;
+	ncer_get_size(self, index, &cell_image.dim, &center);
+	cell_image.pixels = buffer_alloc(cell_image.dim.width *
+	                                 cell_image.dim.height);
+	if (cell_image.pixels == NULL) {
+		return NOMEM;
 	}
 
+	if (render(self, index, ncgr, &cell_image, center)) {
+		return FAIL;
+	}
+
+	if (image_render(image, offset, &cell_image, transform, center)) {
+		return FAIL;
+	}
+
+	FREE(cell_image.pixels);
+
 	return OKAY;
+}
+
+int
+ncer_draw_cell(struct NCER *self, int index, struct NCGR *ncgr, struct image *image, struct coords offset)
+{
+	assert(self != NULL);
+	assert(self->header.magic == (magic_t)'NCER');
+	assert(ncgr != NULL);
+	assert(image != NULL);
+	assert(image->pixels != NULL);
+
+	return render(self, index, ncgr, image, offset);
 }
 
 int
