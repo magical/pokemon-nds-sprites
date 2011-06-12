@@ -270,3 +270,47 @@ nanr_get_frame_count(struct NANR *self, int acell_index)
 
 	return self->abnk.acells[acell_index].frame_count;
 }
+
+/* Return the index of the frame which should be visible at the given tick. */
+int
+nanr_get_frame_at_tick(struct NANR *self, int acell_index, u16 tick)
+{
+	assert(self != NULL);
+	assert(self->header.magic == NANR_MAGIC);
+
+	if (!(0 <= acell_index && acell_index < self->abnk.header.acell_count)) {
+		return -1;
+	}
+
+	struct acell *acell = &self->abnk.acells[acell_index];
+
+	struct frame *frames = (struct frame *)((u8 *)self->abnk.frames + acell->frame_offset);
+
+	u16 total = 0;
+	for (int i = 0; i < acell->frame_count; i++) {
+		struct frame *frame = &frames[i];
+
+		if (tick < frame->frame_duration) {
+			return i;
+		} else {
+			tick -= frame->frame_duration;
+			total += frame->frame_duration;
+		}
+	}
+
+	if (total == 0) {
+		return 0;
+	}
+
+	tick = tick % total;
+
+	for (int i = 0; ; i++) {
+		struct frame *frame = &frames[i];
+		if (tick < frame->frame_duration) {
+			return i;
+		} else {
+			tick -= frame->frame_duration;
+		}
+	}
+	return 0;
+}

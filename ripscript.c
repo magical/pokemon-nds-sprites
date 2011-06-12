@@ -25,6 +25,7 @@
 #include "ncgr.h"
 #include "nclr.h"
 #include "nanr.h"
+#include "nmcr.h"
 #include "image.h"
 
 static scm_t_bits nitro_tag;
@@ -320,6 +321,37 @@ static SCM nanr_frame_count(SCM obj, SCM s_cell_index)
 	return scm_from_int(nanr_get_frame_count(nanr, cell_index));
 }
 
+static SCM nmcr_draw_cell_s(SCM obj, SCM s_cell_index, SCM s_frame_index, SCM s_nanr, SCM s_ncer, SCM s_ncgr, SCM s_image, SCM s_offset)
+{
+	assert_nitro_type(NMCR_MAGIC, obj);
+	assert_nitro_type(NANR_MAGIC, s_nanr);
+	assert_nitro_type('NCER', s_ncer);
+	assert_nitro_type('NCGR', s_ncgr);
+	scm_assert_smob_type(image_tag, s_image);
+
+	int cell_index = scm_to_int(s_cell_index);
+	int frame_index = scm_to_int(s_frame_index);
+
+	struct NMCR *nmcr = (void *) SCM_SMOB_DATA(obj);
+	struct NANR *nanr = (void *) SCM_SMOB_DATA(s_nanr);
+	struct NCER *ncer = (void *) SCM_SMOB_DATA(s_ncer);
+	struct NCGR *ncgr = (void *) SCM_SMOB_DATA(s_ncgr);
+	struct image *image = (void *) SCM_SMOB_DATA(s_image);
+
+	struct coords offset = {0, 0};
+	if (s_offset != SCM_UNDEFINED) {
+		offset.x = scm_to_int(scm_car(s_offset));
+		offset.y = scm_to_int(scm_cadr(s_offset));
+	}
+
+	if (nmcr_draw(nmcr, cell_index, frame_index, nanr, ncer, ncgr, image, offset)) {
+		SCM s = scm_from_locale_symbol("misc-error");
+		scm_error(s, "nmcr-draw-cell", "error", SCM_BOOL_F, SCM_BOOL_F);
+	}
+
+	return SCM_UNSPECIFIED;
+}
+
 static void
 main_callback(void *data, int argc, char *argv[])
 {
@@ -346,6 +378,7 @@ main_callback(void *data, int argc, char *argv[])
 	scm_c_define_gsubr("nanr-draw-frame", 6, 0, 0, nanr_draw_frame_s);
 	scm_c_define_gsubr("nanr-cell-count", 1, 0, 0, nanr_cell_count);
 	scm_c_define_gsubr("nanr-frame-count", 2, 0, 0, nanr_frame_count);
+	scm_c_define_gsubr("nmcr-draw", 7, 1, 0, nmcr_draw_cell_s);
 
 	scm_shell(argc, argv);
 }
