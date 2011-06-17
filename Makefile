@@ -48,4 +48,4 @@ image.o: image.c image.h common.h
 
 .PHONY: clean
 clean:
-	rm $(objects)
+	rm rip.o ripscript.o $(objects)
