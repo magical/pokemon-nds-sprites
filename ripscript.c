@@ -269,7 +269,11 @@ static SCM image_save_png(SCM obj, SCM s_filename)
 		scm_syserror("image-save-png");
 	}
 
-	image_write_png(image, fp);
+	if (image_write_png(image, fp)) {
+		fclose(fp);
+		SCM s = scm_from_locale_symbol("image-error");
+		scm_error(s, "image-save-png", "error", SCM_BOOL_F, SCM_BOOL_F);
+	}
 
 	fclose(fp);
 
@@ -277,6 +281,99 @@ static SCM image_save_png(SCM obj, SCM s_filename)
 
 	return SCM_UNSPECIFIED;
 }
+
+static SCM image_save_gif(SCM obj, SCM s_filename)
+{
+	scm_assert_smob_type(image_tag, obj);
+	scm_dynwind_begin(0);
+
+	struct image *image = (void *) SCM_SMOB_DATA(obj);
+	char *filename = scm_to_locale_string(s_filename);
+	scm_dynwind_free(filename);
+
+	FILE *fp = fopen(filename, "wb");
+	if (fp == NULL) {
+		scm_syserror("image-save-gif");
+	}
+
+	if (image_write_gif(image, fp)) {
+		fclose(fp);
+		SCM s = scm_from_locale_symbol("image-error");
+		scm_error(s, "image-save-gif", "error", SCM_BOOL_F, SCM_BOOL_F);
+	}
+
+	fclose(fp);
+
+	scm_dynwind_end();
+
+	return SCM_UNSPECIFIED;
+}
+
+static void close_gif_handler(void *gif)
+{
+	image_gif_close(gif);
+}
+
+/* FPS is the number of ticks to increment by.
+ * Callback should take a tickcount and return an image, or #f to stop the gif
+ */
+static SCM save_gif(SCM s_filename, SCM s_dim, SCM s_nclr, SCM s_fps, SCM callback)
+{
+	scm_dynwind_begin(0);
+	char *filename = scm_to_locale_string(s_filename);
+	scm_dynwind_free(filename);
+
+	if (scm_is_false(scm_procedure_p(callback))) {
+		scm_wrong_type_arg("save-gif", SCM_ARG2, callback);
+	}
+
+	assert_nitro_type((magic_t)'NCLR', s_nclr);
+
+	SCM gif_error = scm_from_locale_string("gif-error");
+
+	struct GifFileType *gif;
+	do {
+		struct image initial_image = {};
+		struct NCLR *nclr = (void *) SCM_SMOB_DATA(s_nclr);
+		initial_image.dim.width = scm_to_int(scm_car(s_dim));
+		initial_image.dim.height = scm_to_int(scm_cadr(s_dim));
+		initial_image.palette = nclr_get_palette(nclr, 0);
+		if (initial_image.palette == NULL) {
+			SCM s = scm_from_locale_string("nclr-error");
+			scm_error(s, "save-gif", "error getting palette", SCM_BOOL_F, SCM_BOOL_F);
+		}
+		scm_dynwind_free(initial_image.palette);
+		gif = image_gif_new(&initial_image, filename);
+		if (gif == NULL) {
+			scm_error(gif_error, "save-gif", "error creating gif", SCM_BOOL_F, scm_list_1(s_filename));
+		}
+		scm_dynwind_unwind_handler(close_gif_handler, gif, 0);
+	} while(0);
+
+	SCM ticks = scm_from_uint(0);
+	u16 fps = scm_to_uint16(s_fps);
+	do {
+		SCM s_image = scm_call_1(callback, ticks);
+		if (scm_is_false(s_image)) {
+			break;
+		}
+		scm_assert_smob_type(image_tag, s_image);
+		struct image *image = (void *) SCM_SMOB_DATA(s_image);
+		if (image_gif_add_frame(image, gif, fps)) {
+			scm_error(gif_error, "save-gif", "error adding frame", SCM_BOOL_F, scm_list_1(s_image));
+		}
+		ticks = scm_sum(ticks, s_fps);
+	} while(1);
+
+	if (image_gif_close(gif)) {
+		scm_error(gif_error, "save-gif", "error closing gif", SCM_BOOL_F, SCM_BOOL_F);
+	}
+
+	scm_dynwind_end();
+
+	return SCM_UNSPECIFIED;
+}
+
 
 static SCM nanr_draw_frame_s(SCM obj, SCM s_cell_index, SCM s_frame_index, SCM s_ncer, SCM s_ncgr, SCM s_image)
 {
@@ -375,6 +472,8 @@ main_callback(void *data, int argc, char *argv[])
 	scm_c_define_gsubr("image-set-pixels-from-ncgr", 2, 0, 0, image_set_pixels_from_ncgr);
 	scm_c_define_gsubr("image-set-palette-from-nclr", 2, 0, 0, image_set_palette_from_nclr);
 	scm_c_define_gsubr("image-save-png", 2, 0, 0, image_save_png);
+	scm_c_define_gsubr("image-save-gif", 2, 0, 0, image_save_gif);
+	scm_c_define_gsubr("save-gif", 5, 0, 0, save_gif);
 	scm_c_define_gsubr("nanr-draw-frame", 6, 0, 0, nanr_draw_frame_s);
 	scm_c_define_gsubr("nanr-cell-count", 1, 0, 0, nanr_cell_count);
 	scm_c_define_gsubr("nanr-frame-count", 2, 0, 0, nanr_frame_count);

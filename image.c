@@ -15,6 +15,8 @@
 #include <png.h> /* png_*, setjmp */
 #include <zlib.h> /* Z_BEST_SPEED */
 
+#include <gif_lib.h> /* GifFileType, ColorMapType, EGif* */
+
 #include "common.h" /* OKAY, FAIL, NOMEM, assert, CALLOC, FREE, struct buffer, struct coords, struct palette, struct rgba, u8 */
 
 #include "image.h" /* struct image */
@@ -144,6 +146,188 @@ image_write_png(struct image *self, FILE *fp)
 	png_destroy_write_struct(&png, &info);
 	FREE(row_pointers);
 	FREE(palette);
+	return OKAY;
+}
+
+int
+image_write_gif(struct image *self, FILE *fp)
+{
+	assert(self != NULL);
+	assert(self->pixels != NULL);
+	assert(self->palette != NULL);
+	assert(self->palette->colors != NULL);
+
+	int fd = fileno(fp);
+	if (fd == -1) {
+		return FAIL;
+	}
+
+	ColorMapObject *colors = NULL;
+	GifFileType *gif = NULL;
+
+	// Note: this is freed by EGifCloseFile
+	colors = MakeMapObject(self->palette->count, NULL);
+	if (colors == NULL) {
+		goto giferror;
+	}
+
+	int bit_depth = self->palette->bit_depth;
+
+	double factor = 255.0 / (double)maxval_from_bitdepth(bit_depth);
+	for (int i = 0; i < self->palette->count; i++) {
+		struct rgba *c = &self->palette->colors[i];
+		colors->Colors[i].Red = (int)round(c->r * factor);
+		colors->Colors[i].Green = (int)round(c->g * factor);
+		colors->Colors[i].Blue = (int)round(c->b * factor);
+	}
+
+	EGifSetGifVersion("89a");
+	gif = EGifOpenFileHandle(fd);
+	if (gif == NULL) {
+		FreeMapObject(colors);
+		goto giferror;
+	}
+
+	// "do or die"
+	#define dod(expr) if ((expr) != GIF_OK) { goto giferror; }
+
+	dod(EGifPutScreenDesc(gif, self->dim.width, self->dim.height,
+	                      bit_depth - 1, 0, colors));
+
+	dod(EGifPutComment(gif, "Ripped by magical."));
+
+
+	u8 ext[4] = "\x01\x00\x00\x00";
+	dod(EGifPutExtension(gif, GRAPHICS_EXT_FUNC_CODE, sizeof(ext), ext));
+	dod(EGifPutImageDesc(gif, 0, 0, self->dim.width, self->dim.height,
+	                     0, NULL));
+
+	for (int y = 0; y < self->dim.height; y++) {
+		u8 *row = self->pixels->data + self->dim.width * y;
+		dod(EGifPutLine(gif, row, self->dim.width));
+	}
+	if (EGifCloseFile(gif) != GIF_OK) {
+		PrintGifError();
+	}
+	FreeMapObject(colors);
+	return OKAY;
+
+	#undef dod
+
+giferror:
+	PrintGifError();
+	if (gif != NULL && EGifCloseFile(gif) != GIF_OK) {
+		PrintGifError();
+	}
+	return FAIL;
+}
+
+/* Open a new gif image and return a handle.
+ * The image should have a palette and a dimension. The pixels are ignored.
+ * Returns NULL on failure.
+ */
+GifFileType *
+image_gif_new(struct image *self, const char *outfile)
+{
+	assert(self != NULL);
+	assert(outfile != NULL);
+	if (self->palette == NULL || self->palette->colors == NULL) {
+		return NULL;
+	}
+
+	ColorMapObject *colors = NULL;
+	GifFileType *gif = NULL;
+
+	// Note: this is freed by EGifCloseFile
+	colors = MakeMapObject(self->palette->count, NULL);
+	if (colors == NULL) {
+		goto giferror;
+	}
+
+	int bit_depth = self->palette->bit_depth;
+
+	double factor = 255.0 / (double)maxval_from_bitdepth(bit_depth);
+	for (int i = 0; i < self->palette->count; i++) {
+		struct rgba *c = &self->palette->colors[i];
+		colors->Colors[i].Red = (int)round(c->r * factor);
+		colors->Colors[i].Green = (int)round(c->g * factor);
+		colors->Colors[i].Blue = (int)round(c->b * factor);
+	}
+
+	EGifSetGifVersion("89a");
+	gif = EGifOpenFileName(outfile, FALSE);
+	if (gif == NULL) {
+		FreeMapObject(colors);
+		goto giferror;
+	}
+
+	if (EGifPutScreenDesc(gif, self->dim.width, self->dim.height,
+	                      bit_depth - 1, 0, colors) != GIF_OK) {
+		goto giferror;
+	}
+
+	// loop forever
+	char app[] = "NETSCAPE2.0";
+	char data[] = "\x01\x00\x00";
+	if (EGifPutExtensionFirst(gif, APPLICATION_EXT_FUNC_CODE,
+	                          sizeof(app) - 1, app) != GIF_OK ||
+	    EGifPutExtensionLast(gif, APPLICATION_EXT_FUNC_CODE,
+	                         sizeof(data) - 1, data) != GIF_OK) {
+		goto giferror;
+	}
+
+	return gif;
+
+giferror:
+	PrintGifError();
+	if (gif != NULL && EGifCloseFile(gif) != GIF_OK) {
+		PrintGifError();
+	}
+	if (colors != NULL) {
+		FreeMapObject(colors);
+	}
+	return NULL;
+}
+
+/* Add a frame, given by the image, to an open gif. */
+int
+image_gif_add_frame(struct image *self, GifFileType *gif, u16 delay)
+{
+	assert(self != NULL);
+	assert(gif != NULL);
+	assert(self->pixels != NULL);
+
+	// transparency extension
+	u8 ext[4] = "\x09\x00\x00\x00";
+	ext[1] = delay & 0xff;
+	ext[2] = (delay >> 8) & 0xff;
+	if (EGifPutExtension(gif, GRAPHICS_EXT_FUNC_CODE, sizeof(ext), ext) != GIF_OK) {
+		return FAIL;
+	}
+
+	if (EGifPutImageDesc(gif, 0, 0, self->dim.width, self->dim.height,
+	                     0, NULL) != GIF_OK) {
+		return FAIL;
+	}
+
+	for (int y = 0; y < self->dim.height; y++) {
+		u8 *row = self->pixels->data + self->dim.width * y;
+		if (EGifPutLine(gif, row, self->dim.width) != GIF_OK) {
+			return FAIL;
+		}
+	}
+	return OKAY;
+}
+
+/* Close a gif. Can fail. */
+int
+image_gif_close(GifFileType *gif)
+{
+	if (EGifCloseFile(gif) != GIF_OK) {
+		PrintGifError();
+		return FAIL;
+	}
+
 	return OKAY;
 }
 
