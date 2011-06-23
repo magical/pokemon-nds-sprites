@@ -144,6 +144,7 @@ unpack(struct NCGR *self, size_t start, size_t size, u8 *dest)
 	switch (self->char_.header.bit_depth) {
 	case 3:
 		// 4 bits per pixel
+		//warn("%u + %u / 2 <= %u", start, size, buffer->size);
 		assert((start + size) / 2 <= buffer->size);
 		size_t i;
 		for (i = 0; i < size / 2; i++) {
@@ -251,6 +252,16 @@ ncgr_get_cell_pixels(struct NCGR *self, u16 tile, struct dim cell_dim)
 		start_y = (tile / width) * 8;
 		start_x = (tile % width) * 8;
 		for (y = 0; y < cell_dim.height; y++) {
+			// In at least one case (Hydreigon), there are objs
+			// whose dimensions (incorrectly, i assume) extend
+			// beyond the boundaries of the character data.
+			if (!((start_y + y) / 8 < self->char_.header.height)) {
+				warn("obj extends below character data"
+				     " (tile=%d, dim=%dx%d)",
+				     tile, cell_dim.width, cell_dim.height);
+				break;
+			}
+
 			start = (start_y + y) * width * 8 + start_x;
 			if (unpack(self, start, cell_dim.width,
 			           &pixels->data[y * cell_dim.width])) {

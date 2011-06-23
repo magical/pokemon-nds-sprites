@@ -225,6 +225,10 @@ image_render(struct image *self, struct coords offset,
 	for (x = 0; x < source->dim.width; x++) {
 		int pixel_index = (offset.y + y - center.y) * self->dim.width
 		                + (offset.x + x - center.x);
+		if (!check_range(0, offset.y+y-center.y, self->dim.height) ||
+		    !check_range(0, offset.x+x-center.x, self->dim.width)) {
+			continue;
+		}
 		if (!check_range(0, pixel_index, self->pixels->size)) {
 			continue;
 		}
