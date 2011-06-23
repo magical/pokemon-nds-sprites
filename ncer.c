@@ -190,6 +190,7 @@ ncer_dump(struct NCER *self, FILE *fp)
 				"\t.obj_size = %u,\n"
 				"\t.tile_index = %u,\n"
 				"\t.palette_index = %u,\n"
+				"\t.priority = %u,\n"
 				"\t.dim = {.height=%d, .width=%d},\n"
 				"}\n",
 				j,
@@ -198,6 +199,7 @@ ncer_dump(struct NCER *self, FILE *fp)
 				oam->rs_mode, oam->rs_param,
 				oam->obj_mode, oam->obj_shape, oam->obj_size,
 				oam->tile_index, oam->palette_index,
+				oam->priority,
 				d->height, d->width);
 		}
 	}
