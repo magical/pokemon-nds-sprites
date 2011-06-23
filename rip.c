@@ -398,6 +398,123 @@ rip_bw_sprites(void)
 	printf("done\n");
 	exit(EXIT_SUCCESS);
 }
+
+static void
+rip_bw_trainers(void)
+{
+	struct NARC *narc = open_narc(FILENAME);
+	struct NCER *ncer = open_nitro("bw-trainer.ncer", 'NCER');
+
+	char outfile[256] = "";
+
+	#define MKDIR(dir) \
+	if (mkdir(OUTDIR "/" dir, 0755)) { \
+		switch (errno) { \
+		case 0: \
+		case EEXIST: \
+			break; \
+		default: \
+			perror("mkdir: " OUTDIR "/" dir); \
+			exit(EXIT_FAILURE); \
+		} \
+	}
+
+	MKDIR("")
+	MKDIR("parts")
+
+	struct image image = {};
+
+	for (int n = 0; n <= 94; n++) {
+		printf("%d\n", n);
+		struct NCLR *normal_nclr = narc_load_file(narc, n*8 + 7);
+
+		if (normal_nclr == NULL) {
+			if (errno) perror(NULL);
+			else warn("Error reading palettes.");
+			exit(EXIT_FAILURE);
+		}
+
+		assert(nitro_get_magic(normal_nclr) == (magic_t)'NCLR');
+
+		struct palette *normal_palette = nclr_get_palette(normal_nclr, 0);
+
+		nitro_free(normal_nclr);
+
+		FREE(normal_nclr);
+
+		if (normal_palette == NULL) {
+			if (errno) perror(NULL);
+			else warn("Error loading palettes.");
+			exit(EXIT_FAILURE);
+		}
+
+		for (int i = 0; i < 2; i++) {
+			const char *dir;
+
+			switch (i) {
+			case 0: dir = ""; break;
+			case 1: dir = "parts"; break;
+			}
+
+			struct NCGR *ncgr;
+			int index = n * 8 + i;
+
+			if (narc_get_file_size(narc, index) == 0) {
+				// this is fine
+				continue;
+			}
+			ncgr = narc_load_file(narc, index);
+			if (ncgr == NULL) {
+				warn("error getting file %d", index);
+				continue;
+			}
+
+			assert(nitro_get_magic(ncgr) == (magic_t)'NCGR');
+
+			sprintf(outfile, "%s/%s/%d", OUTDIR, dir, n);
+
+			ncgr_get_dim(ncgr, &image.dim);
+
+			if (i == 0) {
+				image.pixels = buffer_alloc(image.dim.height * image.dim.width);
+				if (image.pixels == NULL) {
+					warn("Error ripping %s.", outfile);
+					continue;
+				}
+				struct coords offset = {0,0};
+				if (ncer_draw_cell(ncer, 0, ncgr, &image, offset)) {
+					warn("error drawing cell");
+				}
+				/* if (ncer_draw_boxes(ncer, 0, &image, offset)) {
+					warn("error drawing boxes");
+				} */
+			} else if (i == 1) {
+				image.pixels = ncgr_get_pixels(ncgr);
+				if (image.pixels == NULL) {
+					warn("Error ripping %s.", outfile);
+					continue;
+				}
+			}
+
+
+			nitro_free(ncgr);
+			FREE(ncgr);
+
+			image.palette = normal_palette;
+			write_sprite(&image, outfile);
+
+			FREE(image.pixels);
+		}
+
+		FREE(normal_palette->colors);
+
+		FREE(normal_palette);
+	}
+
+	printf("done\n");
+	exit(EXIT_SUCCESS);
+}
+
 /* for d/p */
 static void
 rip_trainers(void)
@@ -669,6 +786,7 @@ main(int argc, char *argv[])
 	list();
 	//rip_sprites();
 	//rip_bw_sprites();
+	//rip_bw_trainers();
 	//rip_trainers();
 	//rip_trainers2();
 	//rip_footprint();
