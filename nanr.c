@@ -1,4 +1,5 @@
-/* nanr - NANR (animation resource) support
+/* nanr - NANR (animation resource) support and
+ *        NMAR (mapped? animation resource) support
  *
  * Copyright © 2011 magical
  *
@@ -7,22 +8,28 @@
  */
 
 #include "nanr.h"
+#include "nmar.h"
 
 #include <stdio.h> /* FILE */
 #include <math.h> /* sin, cos */
 
 #include "nitro.h" /* struct standard_header, struct format_info, magic_t, format_header */
 #include "common.h" /* OKAY, FAIL, NOMEM, u8, u16, u32, struct buffer */
+#include "nmcr.h" /* struct NMCR, nmcr_draw */
 #include "ncer.h" /* struct NCER */
 #include "ncgr.h" /* struct NCGR */
+
+/* ABNK structure. Shared by NANR and NMAR. */
 
 struct acell {
 	u32 frame_count;
 
 	/* 0 = 4 bytes; 1 = 16 bytes; 2 = 8 bytes */
 	u16 frame_type;
+	/* 1 in NANR, 2 in NMAR */
+	u16 cell_type;
 
-	u16 unknown[3];
+	u32 unknown;
 
 	/* start of frame data, relative to ABNK.frame_data_offset */
 	u32 frame_offset;
@@ -89,7 +96,40 @@ struct ABNK {
 	u8 *frame_data;
 };
 
+static int
+abnk_read(struct ABNK *self, FILE *fp) {
+	FREAD(fp, &self->header, 1);
 
+	if (ferror(fp) || feof(fp)) {
+		return FAIL;
+	}
+
+	size_t data_size = self->header.size - sizeof(self->header);
+	self->data = buffer_alloc(data_size);
+	if (self->data == NULL) {
+		return NOMEM;
+	}
+
+	if (fread(self->data->data, data_size, 1, fp) != 1) {
+		return FAIL;
+	}
+
+	size_t base = sizeof(self->header) - 8;
+	assert(base == 0x18);
+
+	/* XXX bounds checks - invalid data could walk all over memory */
+	self->acells = (struct acell *)(self->data->data +
+	    (self->header.acell_data_offset - base));
+	self->frames = (struct frame *)(self->data->data +
+	    (self->header.frame_data_offset - base));
+	self->frame_data = self->data->data +
+	    (self->header.frame_data_data_offset - base);
+
+	return OKAY;
+}
+
+
+/* NANR */
 
 struct NANR {
 	struct standard_header header;
@@ -105,34 +145,7 @@ nanr_read(void *buf, FILE *fp)
 	FREAD(fp, &self->header, 1);
 	assert(self->header.magic == NANR_MAGIC);
 
-	FREAD(fp, &self->abnk.header, 1);
-
-	if (ferror(fp) || feof(fp)) {
-		return FAIL;
-	}
-
-	size_t data_size = self->abnk.header.size - sizeof(self->abnk.header);
-	self->abnk.data = buffer_alloc(data_size);
-	if (self->abnk.data == NULL) {
-		return NOMEM;
-	}
-
-	if (fread(self->abnk.data->data, data_size, 1, fp) != 1) {
-		return FAIL;
-	}
-
-	size_t base = sizeof(self->abnk.header) - 8;
-	assert(base == 0x18);
-
-	/* XXX bounds checks - invalid data could walk all over memory */
-	self->abnk.acells = (struct acell *)(self->abnk.data->data +
-	    (self->abnk.header.acell_data_offset - base));
-	self->abnk.frames = (struct frame *)(self->abnk.data->data +
-	    (self->abnk.header.frame_data_offset - base));
-	self->abnk.frame_data = self->abnk.data->data +
-	    (self->abnk.header.frame_data_data_offset - base);
-
-	return OKAY;
+	return abnk_read(&self->abnk, fp);
 }
 
 static void
@@ -152,12 +165,50 @@ struct format_info NANR_format = {
 	.free = nanr_free,
 };
 
+
+/* NMAR */
+
+struct NMAR {
+	struct standard_header header;
+	struct ABNK abnk;
+};
+
 static int
-get_frame_data(struct NANR *self, struct acell *acell, int frame_index,
+nmar_read(void *buf, FILE *fp)
+{
+	struct NMAR *self = buf;
+	assert(self != NULL);
+
+	FREAD(fp, &self->header, 1);
+	assert(self->header.magic == NMAR_MAGIC);
+
+	return abnk_read(&self->abnk, fp);
+}
+
+static void
+nmar_free(void *buf)
+{
+	struct NMAR *self = buf;
+	if (self != NULL &&
+	    self->header.magic == NMAR_MAGIC) {
+		free(self->abnk.data);
+	}
+}
+
+struct format_info NMAR_format = {
+	format_header(NMAR_MAGIC, struct NMAR),
+
+	.read = nmar_read,
+	.free = nmar_free,
+};
+
+
+/* Methods */
+
+static int
+get_frame_data(struct ABNK *abnk, struct acell *acell, int frame_index,
                int *cell_index, fx16 m[], struct coords *offset)
 {
-	struct ABNK *abnk = &self->abnk;
-
 	if (!(0 <= frame_index && frame_index < acell->frame_count)) {
 		return FAIL;
 	}
@@ -239,7 +290,7 @@ nanr_draw_frame(struct NANR *self, int acell_index, int frame_index,
 	int cell_index;
 	fx16 m[4];
 	struct coords cell_offset;
-	if (get_frame_data(self, acell, frame_index,
+	if (get_frame_data(&self->abnk, acell, frame_index,
 	                   &cell_index, m, &cell_offset)) {
 		return FAIL;
 	}
@@ -313,4 +364,108 @@ nanr_get_frame_at_tick(struct NANR *self, int acell_index, u16 tick)
 		}
 	}
 	return 0;
+}
+
+int
+nmar_get_cell_count(struct NMAR *self)
+{
+	assert(self != NULL);
+	assert(self->header.magic == NMAR_MAGIC);
+
+	return self->abnk.header.acell_count;
+}
+
+int
+nmar_get_period(struct NMAR *self, int acell_index)
+{
+	assert(self != NULL);
+	assert(self->header.magic == NMAR_MAGIC);
+
+	int period = 0;
+
+	if (!(0 <= acell_index && acell_index < self->abnk.header.acell_count)) {
+		return -1;
+	}
+
+	struct acell *acell = &self->abnk.acells[acell_index];
+	struct frame *frames = (void *)self->abnk.frames + acell->frame_offset;
+
+	for (int i = 0; i < acell->frame_count; i++) {
+		period += frames[i].frame_duration;
+	}
+
+	return period;
+}
+
+int
+nmar_draw_frame(struct NMAR *self, int acell_index, int frame_index, int tick,
+                struct NMCR *nmcr, struct NANR *nanr, struct NCER *ncer, struct NCGR *ncgr,
+                struct image *image, struct coords offset)
+{
+	assert(self != NULL);
+	assert(self->header.magic == NMAR_MAGIC);
+	assert(nmcr != NULL);
+	assert(nanr != NULL);
+	assert(ncer != NULL);
+	assert(ncgr != NULL);
+	assert(image != NULL);
+
+	if (!(0 <= acell_index && acell_index < self->abnk.header.acell_count)) {
+		return FAIL;
+	}
+
+	struct acell *acell = &self->abnk.acells[acell_index];
+
+	int cell_index;
+	fx16 m[4];
+	struct coords o;
+	if (get_frame_data(&self->abnk, acell, frame_index, &cell_index, m, &o)) {
+		return FAIL;
+	}
+
+	o.x += offset.x;
+	o.y += offset.y;
+
+	return nmcr_draw(nmcr, cell_index, tick, nanr, ncer, ncgr, image, o);
+}
+
+int
+nmar_draw(struct NMAR *self, int acell_index, int tick,
+          struct NMCR *nmcr, struct NANR *nanr, struct NCER *ncer, struct NCGR *ncgr,
+          struct image *image, struct coords offset)
+{
+	assert(self != NULL);
+	assert(self->header.magic == NMAR_MAGIC);
+	assert(nmcr != NULL);
+	assert(nanr != NULL);
+	assert(ncer != NULL);
+	assert(ncgr != NULL);
+	assert(image != NULL);
+
+	if (!(0 <= acell_index && acell_index < self->abnk.header.acell_count)) {
+		return FAIL;
+	}
+
+	//warn("%d %d", acell_index, tick);
+	struct acell *acell = &self->abnk.acells[acell_index];
+	struct frame *frames = (void *)self->abnk.frames + acell->frame_offset;
+
+	u32 frame_tick = 0;
+	u32 prev_index = -1;
+	for (u16 i = 0; i < acell->frame_count; i++) {
+		u32 duration = frames[i].frame_duration;
+		u32 cell_index = *(u16*)(self->abnk.frame_data + frames[i].data_offset);
+		if (cell_index != prev_index) {
+			frame_tick = 0;
+		}
+		//warn("frame %d: duration %d index %d", i, duration, *(u16*)((void *)self->abnk.frame_data + frames[i].data_offset));
+		if (tick < duration) {
+			return nmar_draw_frame(self, acell_index, i, frame_tick + tick,
+			                       nmcr, nanr, ncer, ncgr, image, offset);
+		}
+		tick -= duration;
+		frame_tick += duration;
+		prev_index = cell_index;
+	}
+	return FAIL;
 }

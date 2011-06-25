@@ -26,6 +26,7 @@
 #include "nclr.h"
 #include "nanr.h"
 #include "nmcr.h"
+#include "nmar.h"
 #include "image.h"
 
 static scm_t_bits nitro_tag;
@@ -449,6 +450,58 @@ static SCM nmcr_draw_cell_s(SCM obj, SCM s_cell_index, SCM s_frame_index, SCM s_
 	return SCM_UNSPECIFIED;
 }
 
+static SCM nmar_cell_count(SCM obj)
+{
+	assert_nitro_type(NMAR_MAGIC, obj);
+	struct NMAR *nmar = (void *) SCM_SMOB_DATA(obj);
+
+	return scm_from_int(nmar_get_cell_count(nmar));
+}
+
+static SCM nmar_period(SCM obj, SCM s_index)
+{
+	assert_nitro_type(NMAR_MAGIC, obj);
+	struct NMAR *nmar = (void *) SCM_SMOB_DATA(obj);
+
+	int index = scm_to_int(s_index);
+
+	return scm_from_int(nmar_get_period(nmar, index));
+}
+
+static SCM nmar_draw_s(SCM obj, SCM s_cell_index, SCM s_tick, SCM s_nmcr, SCM s_nanr, SCM s_ncer, SCM s_ncgr, SCM s_image, SCM s_offset)
+{
+	assert_nitro_type(NMAR_MAGIC, obj);
+	assert_nitro_type(NMCR_MAGIC, s_nmcr);
+	assert_nitro_type(NANR_MAGIC, s_nanr);
+	assert_nitro_type('NCER', s_ncer);
+	assert_nitro_type('NCGR', s_ncgr);
+	scm_assert_smob_type(image_tag, s_image);
+
+	int cell_index = scm_to_int(s_cell_index);
+	int tick = scm_to_int(s_tick);
+
+	struct NMAR *nmar = (void *) SCM_SMOB_DATA(obj);
+	struct NMCR *nmcr = (void *) SCM_SMOB_DATA(s_nmcr);
+	struct NANR *nanr = (void *) SCM_SMOB_DATA(s_nanr);
+	struct NCER *ncer = (void *) SCM_SMOB_DATA(s_ncer);
+	struct NCGR *ncgr = (void *) SCM_SMOB_DATA(s_ncgr);
+	struct image *image = (void *) SCM_SMOB_DATA(s_image);
+
+	struct coords offset = {0, 0};
+	if (s_offset != SCM_UNDEFINED) {
+		offset.x = scm_to_int(scm_car(s_offset));
+		offset.y = scm_to_int(scm_cadr(s_offset));
+	}
+
+	if (nmar_draw(nmar, cell_index, tick, nmcr, nanr, ncer, ncgr, image, offset)) {
+		SCM s = scm_from_locale_symbol("misc-error");
+		scm_error(s, "nmar-draw", "error", SCM_BOOL_F, SCM_BOOL_F);
+	}
+
+	return SCM_UNSPECIFIED;
+
+}
+
 static void
 main_callback(void *data, int argc, char *argv[])
 {
@@ -478,6 +531,9 @@ main_callback(void *data, int argc, char *argv[])
 	scm_c_define_gsubr("nanr-cell-count", 1, 0, 0, nanr_cell_count);
 	scm_c_define_gsubr("nanr-frame-count", 2, 0, 0, nanr_frame_count);
 	scm_c_define_gsubr("nmcr-draw", 7, 1, 0, nmcr_draw_cell_s);
+	scm_c_define_gsubr("nmar-cell-count", 1, 0, 0, nmar_cell_count);
+	scm_c_define_gsubr("nmar-period", 2, 0, 0, nmar_period);
+	scm_c_define_gsubr("nmar-draw", 8, 1, 0, nmar_draw_s);
 
 	scm_shell(argc, argv);
 }

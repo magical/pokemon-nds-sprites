@@ -22,6 +22,7 @@
 #include "ncer.h" /* NCER_format */
 #include "nanr.h" /* NANR_format */
 #include "nmcr.h" /* NMCR_format */
+#include "nmar.h" /* NMAR_format */
 
 #define D(w,h) {.height=h, .width=w}
 // obj_sizes [size][shape]
@@ -42,11 +43,7 @@ const struct format_info * const formats[] = {
 	&NCER_format,
 	&NANR_format,
 	&NMCR_format,
-
-	/* known but unsupported formats */
-	#define UNSUPPORTED(m) &(struct format_info){.magic = (magic_t)m}
-	UNSUPPORTED('NMAR'),
-	#undef UNSUPPORTED
+	&NMAR_format,
 
 	NULL
 };
