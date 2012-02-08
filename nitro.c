@@ -85,7 +85,7 @@ nitro_read_nocompressed(FILE *fp, magic_t magic)
 	} else if (fmt->size == 0) {
 		char magic_buf[MAGIC_BUF_SIZE];
 		warn("Unsupported format: %s", strmagic(magic, magic_buf));
-		chunk = malloc(sizeof(struct standard_header));
+		chunk = malloc(sizeof(struct nitro));
 	} else {
 		chunk = malloc(fmt->size);
 	}
@@ -103,7 +103,7 @@ nitro_read_nocompressed(FILE *fp, magic_t magic)
 	} else if (fmt->size > 0) {
 		memset(chunk, 0, fmt->size);
 	} else {
-		memset(chunk, 0, sizeof(struct standard_header));
+		memset(chunk, 0, sizeof(struct nitro));
 	}
 
 	if (fmt->init != NULL) {
@@ -129,7 +129,7 @@ nitro_read_nocompressed(FILE *fp, magic_t magic)
 			goto error;
 		}
 	} else {
-		fread(chunk, sizeof(struct standard_header), 1, fp);
+		fread(chunk, sizeof(struct nitro), 1, fp);
 	}
 
 	if (ferror(fp) || feof(fp)) {
@@ -209,7 +209,7 @@ nitro_read(FILE *fp, off_t size)
 void
 nitro_free(void *chunk)
 {
-	struct standard_header *header = chunk;
+	struct nitro *header = chunk;
 	if (chunk != NULL) {
 		const struct format_info *fmt = format_lookup(header->magic);
 

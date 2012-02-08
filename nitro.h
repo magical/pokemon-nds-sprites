@@ -14,7 +14,9 @@
 
 typedef u32 magic_t;
 
-struct standard_header {
+// This is the common header used by most of the file formats found in the
+// DS Pokemon games.
+struct nitro {
 	magic_t magic;
 	u16 bom;
 	u16 version;
@@ -25,10 +27,11 @@ struct standard_header {
 };
 
 
-// OAM = Object Attribute Memory; see GBATEK for details.
-// XXX oam isn't a great name - call this "obj" instead?
+// An OBJ is a moveable sprite with first-class support from the DS's video
+// system. They are sometimes called OAMs, which more properly refers to the
+// region of Memory where Object Attributes are stored. See GBATEK for details.
 // XXX add some union magic
-struct OAM {
+struct OBJ {
 	s16 y:8;
 	u16 rs_mode:2;
 	u16 obj_mode:2;
@@ -77,7 +80,7 @@ static inline magic_t
 nitro_get_magic(void *chunk)
 {
 	if (chunk != NULL) {
-		return ((struct standard_header *)chunk)->magic;
+		return ((struct nitro *)chunk)->magic;
 	}
 	return 0;
 }

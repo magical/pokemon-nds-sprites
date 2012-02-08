@@ -116,7 +116,7 @@ static int
 list(void)
 {
 	struct NARC *narc;
-	struct standard_header *chunk;
+	struct nitro *chunk;
 
 	narc = open_narc(FILENAME);
 

@@ -13,7 +13,7 @@
 #include <sys/types.h> /* ssize_t */
 
 #include "common.h" /* OKAY, FAIL, NOMEM, struct buffer, struct dim, u8, u16, u32, FREAD, FREE, assert, warn, buffer_alloc  */
-#include "nitro.h" /* struct format_info, struct standard_header, magic_t, format_header */
+#include "nitro.h" /* struct format_info, struct nitro, magic_t, format_header */
 
 #include "ncgr.h"
 
@@ -41,7 +41,7 @@ struct CHAR {
 };
 
 struct NCGR {
-	struct standard_header header;
+	struct nitro header;
 
 	struct CHAR char_;
 	//struct CPOS cpos;

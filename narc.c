@@ -9,7 +9,7 @@
 #include <stdlib.h> /* NULL */
 #include <stdio.h> /* FILE, SEEK_CUR, SEEK_SET, off_t, feof, ferror, fseeko, ftello */
 
-#include "nitro.h" /* struct format_info, struct standard_header, magic_t, format_header, nitro_read */
+#include "nitro.h" /* struct format_info, struct nitro, magic_t, format_header, nitro_read */
 #include "common.h" /* OKAY, FAIL, NOMEM, assert, FREAD, CALLOC, FREE, u32 */
 
 #include "narc.h"
@@ -41,7 +41,7 @@ struct FNTB {
 
 
 struct NARC {
-	struct standard_header header;
+	struct nitro header;
 
 	struct FATB fatb;
 

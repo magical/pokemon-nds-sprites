@@ -9,7 +9,7 @@
 #include <stdio.h> /* FILE, ferror, feof */
 
 #include "common.h" /* OKAY, FAIL, NOMEM, struct buffer, struct palette, u8, u16, u32, assert, ALLOC, CALLOC, FREE, FREAD */
-#include "nitro.h" /* struct format_info, struct standard_header, magic_t, format_header */
+#include "nitro.h" /* struct format_info, struct nitro, magic_t, format_header */
 
 #include "nclr.h"
 
@@ -33,7 +33,7 @@ struct PLTT {
 };
 
 struct NCLR {
-	struct standard_header header;
+	struct nitro header;
 
 	struct PLTT pltt;
 

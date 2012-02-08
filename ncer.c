@@ -10,7 +10,7 @@
 #include <stdio.h> /* FILE, stdout */
 #include <limits.h> /* INT_MAX, INT_MIN */
 
-#include "nitro.h" /* struct format_info, struct standard_header, struct OAM, magic_t, format_header */
+#include "nitro.h" /* struct format_info, struct nitro, struct OBJ, magic_t, format_header */
 #include "ncgr.h" /* struct NCGR, ncgr_get_pixel */
 #include "image.h" /* struct image */
 #include "common.h" /* OKAY, FAIL, NOMEM, CALLOC, FREAD, assert, struct dim, struct coords, u8, u16, u32, s16, fx16 */
@@ -18,9 +18,9 @@
 #include "ncer.h"
 
 struct CEBK_celldata {
-	u16 oam_count;
+	u16 obj_count;
 	u16 unknown;
-	u32 oam_offset;
+	u32 obj_offset;
 };
 
 // XXX huh?
@@ -56,14 +56,14 @@ struct CEBK {
 	// May be NULL if cell_type == 0
 	struct CEBK_celldata_ex *cell_data_ex;
 
-	int oam_count;
-	struct OAM *oam_data;
+	int obj_count;
+	struct OBJ *obj_data;
 
 	struct CEBK_partitiondata *partition_data;
 };
 
 struct NCER {
-	struct standard_header header;
+	struct nitro header;
 
 	struct CEBK cebk;
 	//struct LABL labl;
@@ -107,16 +107,16 @@ ncer_read(void *buf, FILE *fp)
 		return FAIL;
 	}
 
-	self->cebk.oam_count = 0;
+	self->cebk.obj_count = 0;
 	for (int i = 0; i < (signed long)self->cebk.header.cell_count; i++) {
-		self->cebk.oam_count += self->cebk.cell_data[i].oam_count;
+		self->cebk.obj_count += self->cebk.cell_data[i].obj_count;
 	}
 
-	if (CALLOC(self->cebk.oam_data, self->cebk.oam_count) == NULL) {
+	if (CALLOC(self->cebk.obj_data, self->cebk.obj_count) == NULL) {
 		return FAIL;
 	}
 
-	FREAD(fp, self->cebk.oam_data, self->cebk.oam_count);
+	FREAD(fp, self->cebk.obj_data, self->cebk.obj_count);
 
 	// partition_data?
 
@@ -132,7 +132,7 @@ ncer_free(void *buf)
 	    self->header.magic == (magic_t)'NCER') {
 		FREE(self->cebk.cell_data);
 		FREE(self->cebk.cell_data_ex);
-		FREE(self->cebk.oam_data);
+		FREE(self->cebk.obj_data);
 		FREE(self->cebk.partition_data);
 	}
 }
@@ -169,17 +169,17 @@ ncer_dump(struct NCER *self, FILE *fp)
 
 	for (int i = 0; i < (signed long)self->cebk.header.cell_count; i++) {
 		struct CEBK_celldata *cell = &self->cebk.cell_data[i];
-		fprintf(fp, "ncer.cebk.cell[%d].oam_count = %u\n", i, cell->oam_count);
+		fprintf(fp, "ncer.cebk.cell[%d].obj_count = %u\n", i, cell->obj_count);
 		fprintf(fp, "ncer.cebk.cell[%d].unknown = %u\n", i, cell->unknown);
-		fprintf(fp, "ncer.cebk.cell[%d].oam_offset = %u\n", i, cell->oam_offset);
-		struct OAM *oams = (struct OAM*)((u8 *)self->cebk.oam_data + cell->oam_offset);
+		fprintf(fp, "ncer.cebk.cell[%d].obj_offset = %u\n", i, cell->obj_offset);
+		struct OBJ *objs = (struct OBJ*)((u8 *)self->cebk.obj_data + cell->obj_offset);
 
-		for (int j = 0; j < cell->oam_count; j++) {
-			struct OAM *oam = &oams[j];
-			const struct dim *d = &obj_sizes[oam->obj_size][oam->obj_shape];
+		for (int j = 0; j < cell->obj_count; j++) {
+			struct OBJ *obj = &objs[j];
+			const struct dim *d = &obj_sizes[obj->obj_size][obj->obj_shape];
 
 			fprintf(fp,
-				"oam[%d] = {\n"
+				"obj[%d] = {\n"
 				"\t.y = %d,\n"
 				"\t.x = %d,\n"
 				"\t.color_mode = %d,\n"
@@ -194,17 +194,17 @@ ncer_dump(struct NCER *self, FILE *fp)
 				"\t.dim = {.height=%d, .width=%d},\n"
 				"}\n",
 				j,
-				oam->y, oam->x,
-				oam->color_mode,
-				oam->rs_mode, oam->rs_param,
-				oam->obj_mode, oam->obj_shape, oam->obj_size,
-				oam->tile_index, oam->palette_index,
-				oam->priority,
+				obj->y, obj->x,
+				obj->color_mode,
+				obj->rs_mode, obj->rs_param,
+				obj->obj_mode, obj->obj_shape, obj->obj_size,
+				obj->tile_index, obj->palette_index,
+				obj->priority,
 				d->height, d->width);
 		}
 	}
 
-	//printf("sizeof(OAM) = %u", (unsigned int) sizeof(struct OAM));
+	//printf("sizeof(OAM) = %u", (unsigned int) sizeof(struct OBJ));
 }
 
 #define check_range(a, b, c) ((a) <= (b) && (b) < (c))
@@ -271,21 +271,21 @@ image_render(struct image *self, struct coords offset,
 }
 
 static int
-obj_draw(struct OAM *oam, struct NCGR *ncgr, struct image *image,
+obj_draw(struct OBJ *obj, struct NCGR *ncgr, struct image *image,
          struct coords frame_offset, fx16 transform[4])
 {
 	// x and y specify the position of the top-left corner of the frame.
 	// coordinates for rotations have the origin at center of the frame.
-	//printf("x = %d, y = %d\n", oam->x, oam->y);
+	//printf("x = %d, y = %d\n", obj->x, obj->y);
 
 	// the real dimensions of the cell
-	struct dim cell_dim = obj_sizes[oam->obj_size][oam->obj_shape];
+	struct dim cell_dim = obj_sizes[obj->obj_size][obj->obj_shape];
 
 	//warn("cell_dim = {.height = %d, .width = %d}", cell_dim.height, cell_dim.width);
-	//warn("tile_index = %d", oam->tile_index);
+	//warn("tile_index = %d", obj->tile_index);
 
 	struct buffer *pixels =
-	    ncgr_get_cell_pixels(ncgr, oam->tile_index, cell_dim);
+	    ncgr_get_cell_pixels(ncgr, obj->tile_index, cell_dim);
 	if (pixels == NULL) {
 		return FAIL;
 	}
@@ -293,14 +293,14 @@ obj_draw(struct OAM *oam, struct NCGR *ncgr, struct image *image,
 	// the dimensions of the "on-screen" frame
 	// is either the same as cell_dim, or double
 	struct dim frame_dim = cell_dim;
-	if (oam->rs_mode & 2) {
+	if (obj->rs_mode & 2) {
 		frame_dim.height *= 2;
 		frame_dim.width *= 2;
 	}
 
 	struct coords transform_offset = {frame_dim.width / 2, frame_dim.height / 2};
 
-	int rs_mode = oam->rs_mode;
+	int rs_mode = obj->rs_mode;
 	int x, y;
 	// fixed-point 8.8
 	s16 x_prime_fx, y_prime_fx;
@@ -312,8 +312,8 @@ obj_draw(struct OAM *oam, struct NCGR *ncgr, struct image *image,
 
 	for (y = 0; y < frame_dim.height; y++) {
 	for (x = 0; x < frame_dim.width; x++) {
-		if (oam->y + frame_offset.y + y < 0 ||
-		    oam->x + frame_offset.x + x < 0) {
+		if (obj->y + frame_offset.y + y < 0 ||
+		    obj->x + frame_offset.x + x < 0) {
 			continue;
 		}
 
@@ -344,8 +344,8 @@ obj_draw(struct OAM *oam, struct NCGR *ncgr, struct image *image,
 		if (0 <= x_prime && x_prime < cell_dim.width &&
 		    0 <= y_prime && y_prime < cell_dim.height) {
 			//draw the pixel
-			int pixel_offset = (oam->y + frame_offset.y + y) * image->dim.width
-					 + (oam->x + frame_offset.x + x);
+			int pixel_offset = (obj->y + frame_offset.y + y) * image->dim.width
+					 + (obj->x + frame_offset.x + x);
 			if (0 <= pixel_offset && (size_t)pixel_offset < image->pixels->size) {
 				/*u8 pixel = pixels->data[y_prime * cell_dim.width + x_prime];
 				if (pixel != 0) {
@@ -367,10 +367,10 @@ static int
 render(struct NCER *self, int index, struct NCGR *ncgr, struct image *image, struct coords offset)
 {
 	struct CEBK_celldata *cell = self->cebk.cell_data + index;
-	struct OAM *objs = (void *)((u8*)self->cebk.oam_data + cell->oam_offset);
+	struct OBJ *objs = (void *)((u8*)self->cebk.obj_data + cell->obj_offset);
 
-	for (int i = 0; i < cell->oam_count; i++) {
-		struct OAM *obj = &objs[i];
+	for (int i = 0; i < cell->obj_count; i++) {
+		struct OBJ *obj = &objs[i];
 
 		/*if(obj->rs_mode == 1) {
 			warn("transform, not doubled");
@@ -389,7 +389,7 @@ static void
 ncer_get_size(struct NCER *self, int index, struct dim *dim, struct coords *center)
 {
 	struct CEBK_celldata *cell = self->cebk.cell_data + index;
-	struct OAM *objs = (void *)((u8*)self->cebk.oam_data + cell->oam_offset);
+	struct OBJ *objs = (void *)((u8*)self->cebk.obj_data + cell->obj_offset);
 
 	struct coords topleft = {INT_MAX, INT_MAX},
 	              bottomright = {INT_MIN, INT_MIN};
@@ -397,8 +397,8 @@ ncer_get_size(struct NCER *self, int index, struct dim *dim, struct coords *cent
 	#define min(a,b) ((a) < (b) ? (a) : (b))
 	#define max(a,b) ((a) > (b) ? (a) : (b))
 
-	for (int i = 0; i < cell->oam_count; i++) {
-		struct OAM *obj = &objs[i];
+	for (int i = 0; i < cell->obj_count; i++) {
+		struct OBJ *obj = &objs[i];
 		struct dim cell_dim = obj_sizes[obj->obj_size][obj->obj_shape];
 		if (obj->rs_mode & 2) {
 			cell_dim.width *= 2;
@@ -478,17 +478,17 @@ ncer_draw_boxes(struct NCER *self, int index, struct image *image, struct coords
 
 	struct CEBK_celldata *cell = self->cebk.cell_data + index;
 
-	for (int i = 0; i < cell->oam_count; i++) {
-		struct OAM *oam = (struct OAM *)((u8 *)self->cebk.oam_data + cell->oam_offset) + i;
+	for (int i = 0; i < cell->obj_count; i++) {
+		struct OBJ *obj = (struct OBJ *)((u8 *)self->cebk.obj_data + cell->obj_offset) + i;
 
 		// the real dimensions of the cell
-		struct dim frame_dim = obj_sizes[oam->obj_size][oam->obj_shape];
+		struct dim frame_dim = obj_sizes[obj->obj_size][obj->obj_shape];
 
 		struct coords topleft;
-		topleft.x = oam->x + offset.x;
-		topleft.y = oam->y + offset.y;
+		topleft.x = obj->x + offset.x;
+		topleft.y = obj->y + offset.y;
 
-		if (oam->rs_mode & 2) {
+		if (obj->rs_mode & 2) {
 			frame_dim.height *= 2;
 			frame_dim.width *= 2;
 		}

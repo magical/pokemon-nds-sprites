@@ -8,7 +8,7 @@
 
 #include "nmcr.h"
 
-#include "nitro.h" /* struct standard_header, struct format_info, magic_t, format_header */
+#include "nitro.h" /* struct nitro, struct format_info, magic_t, format_header */
 #include "ncgr.h" /* struct NCGR */
 #include "ncer.h" /* struct NCER */
 #include "nanr.h" /* struct NANR, nanr_draw_frame */
@@ -50,7 +50,7 @@ struct MCBK {
 };
 
 struct NMCR {
-	struct standard_header header;
+	struct nitro header;
 	struct MCBK mcbk;
 };
 

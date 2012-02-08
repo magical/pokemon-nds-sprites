@@ -13,7 +13,7 @@
 #include <stdio.h> /* FILE */
 #include <math.h> /* sin, cos */
 
-#include "nitro.h" /* struct standard_header, struct format_info, magic_t, format_header */
+#include "nitro.h" /* struct nitro, struct format_info, magic_t, format_header */
 #include "common.h" /* OKAY, FAIL, NOMEM, u8, u16, u32, struct buffer */
 #include "nmcr.h" /* struct NMCR, nmcr_draw */
 #include "ncer.h" /* struct NCER */
@@ -132,7 +132,7 @@ abnk_read(struct ABNK *self, FILE *fp) {
 /* NANR */
 
 struct NANR {
-	struct standard_header header;
+	struct nitro header;
 	struct ABNK abnk;
 };
 
@@ -169,7 +169,7 @@ struct format_info NANR_format = {
 /* NMAR */
 
 struct NMAR {
-	struct standard_header header;
+	struct nitro header;
 	struct ABNK abnk;
 };
 
