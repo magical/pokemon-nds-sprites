@@ -19,6 +19,10 @@
 #include "ncer.h" /* struct NCER */
 #include "ncgr.h" /* struct NCGR */
 
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
+
 /* ABNK structure. Shared by NANR and NMAR. */
 
 struct acell {
@@ -55,7 +59,7 @@ struct frame_data_0 {
 struct frame_data_1 {
 	u16 cell_index;
 
-	s16 theta; // actually 1.1.14 fixed-point
+	s16 theta; // angle in 65536 degrees
 
 	v16 x_mag;
 	v16 x_unknown;
@@ -233,7 +237,7 @@ get_frame_data(struct ABNK *abnk, struct acell *acell, int frame_index,
 		// cheating, i know.
 		// if this looks backwards, it's because we're forming the
 		// *inverse* matrix.
-		double theta = frame_data->theta * 0x1p-14;
+		double theta = frame_data->theta * (2 * M_PI) / 0x10000;
 		/*warn("\ntheta=%f x=%f y=%f", theta,
 		                             frame_data->x_mag / 4096.0,
 		                             frame_data->y_mag / 4096.0);*/
