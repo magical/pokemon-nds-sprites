@@ -132,7 +132,7 @@ nclr_get_palette(struct NCLR *self, int index)
 
 		/* The first palette entry is always transparent;
 		 * the rest are not. */
-		palette->colors[i].a = (i == 0) ? 31 : 0;
+		palette->colors[i].a = (i == 0) ? 0 : 31;
 	}
 
 	return palette;
