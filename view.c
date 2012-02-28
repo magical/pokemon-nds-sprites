@@ -1,4 +1,5 @@
 #include <stdbool.h>
+#include <string.h> /* memset */
 
 #include <gtk/gtk.h>
 #include <gdk/gdkkeysyms.h>
@@ -8,16 +9,42 @@
 #include "ncgr.h"
 #include "nclr.h"
 #include "ncer.h"
+#include "nanr.h"
+#include "nmar.h"
+#include "nmcr.h"
 #include "image.h"
+
+static struct dim anim_dim = {.width = 192, .height = 128};
+static struct coords anim_offset = {.x = 96, .y = 112};
+
+struct anim_state {
+	struct NCGR *ncgr;
+	struct NCLR *nclr;
+	struct NCER *ncer;
+	struct NANR *nanr;
+	struct NMCR *nmcr;
+	struct NMAR *nmar;
+
+	struct image image;
+
+	int tick;
+	int period;
+};
 
 static struct {
 	struct NARC *narc;
 
+	GtkWidget *window;
 	GtkWidget *img;
 	cairo_surface_t *surface;
 
+	guint timer;
+
+
 	int n;
 	bool shiny;
+
+	struct anim_state anim;
 } state;
 
 struct NARC *
@@ -73,19 +100,37 @@ void image_to_surface(struct image *image, cairo_surface_t *surface)
 	int p;
 	int i;
 	uint32_t c;
+	int a, r, g, b;
 	uint32_t *data = (uint32_t *)cairo_image_surface_get_data(surface);
 
 	for (i = 0; i < image->pixels->size; i++) {
 		p = image->pixels->data[i]; 
-		if (p == 0) {
+		rgba = image->palette->colors[p];
+		if (rgba.a == 0) {
 			// transparent
-		} else {
-			rgba = image->palette->colors[p];
-
+			data[i] = 0;
+		} else if (rgba.a == 0x1f) {
+			// opaque
 			c = (((0xff             )     ) << 24)
 			  | (((rgba.r * 255 + 15) / 31) << 16)
 			  | (((rgba.g * 255 + 15) / 31) << 8)
 			  | (((rgba.b * 255 + 15) / 31)     );
+
+			data[i] = c;
+		} else {
+			a = (rgba.a * 255 + 15) / 31;
+			r = (rgba.r * 255 + 15) / 31;
+			g = (rgba.g * 255 + 15) / 31;
+			b = (rgba.b * 255 + 15) / 31;
+
+			r = (r * a + 0x7f) / 255;
+			g = (g * a + 0x7f) / 255;
+			b = (b * a + 0x7f) / 255;
+
+			c = (a << 24)
+			  | (r << 16)
+			  | (g << 8)
+			  | (b << 0);
 
 			data[i] = c;
 		}
@@ -146,15 +191,82 @@ void load_image(int n, bool shiny)
 	nitro_free(ncgr);
 }
 
+void load_anim(struct anim_state *anim, struct NARC *narc, int n)
+{
+	int base = n * 20;
+	anim->ncgr = narc_load_file(narc, base + 2);
+	anim->nclr = narc_load_file(narc, base + 18);
+	anim->ncer = narc_load_file(narc, base + 4);
+	anim->nanr = narc_load_file(narc, base + 5);
+	anim->nmcr = narc_load_file(narc, base + 6);
+	anim->nmar = narc_load_file(narc, base + 7);
+
+	anim->image.dim = anim_dim;
+	anim->image.pixels = buffer_alloc(anim_dim.width * anim_dim.height);
+	anim->image.palette = nclr_get_palette(anim->nclr, 0);
+
+	anim->tick = 0;
+	anim->period = nmar_get_period(anim->nmar, 0);
+}
+
+void close_anim(struct anim_state *anim)
+{
+	nitro_free(anim->ncgr);
+	nitro_free(anim->nclr);
+	nitro_free(anim->ncer);
+	nitro_free(anim->nanr);
+	nitro_free(anim->nmcr);
+	nitro_free(anim->nmar);
+
+	if (anim->image.palette) {
+		free(anim->image.palette->colors);
+	}
+	free(anim->image.palette);
+	free(anim->image.pixels);
+}
+
+void render_anim(struct anim_state *anim, cairo_surface_t *surface)
+{
+	memset(anim->image.pixels->data, 0, anim->image.pixels->size);
+
+	nmar_draw(anim->nmar, 0, anim->tick, anim->nmcr, anim->nanr, anim->ncer, anim->ncgr, &anim->image, anim_offset);
+
+	image_to_surface(&anim->image, surface);
+}
+
 void reload_image(void)
 {
-	load_image(state.n, state.shiny);
+	cairo_surface_t *surface;
+
+	surface = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, anim_dim.width, anim_dim.height);
+	render_anim(&state.anim, surface);
+	set_image(surface);
+	cairo_surface_destroy(surface);
+}
+
+gboolean timer_callback(gpointer data)
+{
+	state.anim.tick = (state.anim.tick + 1) % state.anim.period;
+	reload_image();
+	return TRUE; // keep timer
 }
 
 void set_n(int n)
 {
-	state.n = n;
-	reload_image();
+	if (n != state.n) {
+		state.n = n;
+		close_anim(&state.anim);
+		load_anim(&state.anim, state.narc, n);
+		if (state.timer) {
+			g_source_remove(state.timer);
+		}
+		state.timer = g_timeout_add(1000/60, timer_callback, NULL);
+		reload_image();
+
+		char title[10];
+		sprintf(title, "view: %03d", n);
+		gtk_window_set_title(GTK_WINDOW(state.window), title);
+	}
 }
 
 gboolean image_expose_event(GtkWidget *widget, GdkEventExpose *event, gpointer data)
@@ -217,7 +329,7 @@ int main(int argc, char *argv[])
 {
 	GtkWidget *window;
 
-	state.n = 1;
+	state.n = 0;
 
 	gtk_init(&argc, &argv);
 
@@ -232,6 +344,7 @@ int main(int argc, char *argv[])
 	}
 
 	window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
+	state.window = window;
 
 	g_signal_connect_swapped(G_OBJECT(window), "destroy",
 	                         G_CALLBACK(gtk_main_quit), NULL);
@@ -239,8 +352,7 @@ int main(int argc, char *argv[])
 	                 G_CALLBACK(keypress), NULL);
 
 	state.img = image_widget();
-	//image_set_from_png(img, "/usr/share/icons/hicolor/256x256/apps/firefox.png");
-	set_n(state.n);
+	set_n(1);
 
 	gtk_container_add(GTK_CONTAINER(window), state.img);
 
