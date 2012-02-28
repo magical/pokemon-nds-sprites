@@ -10,11 +10,15 @@
 #include "ncer.h"
 #include "image.h"
 
-static GtkWidget *img_widget = NULL;
-static struct NARC *narc = NULL;
-static cairo_surface_t *image = NULL;
-static int image_n = 1;
-static bool image_shiny = false;
+static struct {
+	struct NARC *narc;
+
+	GtkWidget *img;
+	cairo_surface_t *surface;
+
+	int n;
+	bool shiny;
+} state;
 
 struct NARC *
 narc_open(const char *path)
@@ -96,19 +100,19 @@ void set_image(cairo_surface_t *new_image)
 	cairo_surface_t *old_image;
 
 	if (new_image != NULL) {
-		old_image = image;
-		image = cairo_surface_reference(new_image);
+		old_image = state.surface;
+		state.surface = cairo_surface_reference(new_image);
 		cairo_surface_destroy(old_image);
 
 		width = cairo_image_surface_get_width(new_image);
 		height = cairo_image_surface_get_height(new_image);
-		gtk_widget_set_size_request(img_widget, width, height);
+		gtk_widget_set_size_request(state.img, width, height);
 
-		gtk_widget_queue_draw(img_widget);
+		gtk_widget_queue_draw(state.img);
 	}
 }
 
-void load_image(int n)
+void load_image(int n, bool shiny)
 {
 	struct NCGR *ncgr;
 	struct NCLR *nclr;
@@ -118,8 +122,8 @@ void load_image(int n)
 	struct image image;
 	struct coords offset = {0,0};
 
-	ncgr = narc_load_file(narc, n * 20);
-	nclr = narc_load_file(narc, n * 20 + (image_shiny ? 19 : 18));
+	ncgr = narc_load_file(state.narc, n * 20);
+	nclr = narc_load_file(state.narc, n * 20 + (shiny ? 19 : 18));
 	ncer = load_file("bw-pokemon.ncer", (magic_t)'NCER');
 
 	ncgr_get_dim(ncgr, &image.dim);
@@ -142,13 +146,24 @@ void load_image(int n)
 	nitro_free(ncgr);
 }
 
+void reload_image(void)
+{
+	load_image(state.n, state.shiny);
+}
+
+void set_n(int n)
+{
+	state.n = n;
+	reload_image();
+}
+
 gboolean image_expose_event(GtkWidget *widget, GdkEventExpose *event, gpointer data)
 {
 	cairo_t *cr;
 
 	cr = gdk_cairo_create(widget->window);
 
-	cairo_set_source_surface(cr, image, 0, 0);
+	cairo_set_source_surface(cr, state.surface, 0, 0);
 	cairo_paint(cr);
 
 	cairo_destroy(cr);
@@ -169,36 +184,30 @@ GtkWidget *image_widget(void)
 
 void image_set_from_png(GtkWidget *da, const char *path)
 {
-	image = cairo_image_surface_create_from_png(path);
-
-	set_image(image);
+	set_image(cairo_image_surface_create_from_png(path));
 }
 
 gboolean keypress(GtkWidget *window, GdkEventKey *event, gpointer data)
 {
 	//fprintf(stderr, "Keypress: %x\n", event->keyval);
 	if (event->keyval == GDK_KEY_Up) {
-		image_n += 1;
-		load_image(image_n);
+		set_n(state.n + 1);
 		return TRUE;
 	} else if (event->keyval == GDK_KEY_Down) {
-		image_n -= 1;
-		load_image(image_n);
+		set_n(state.n - 1);
 		return TRUE;
 	} else if (event->keyval == GDK_KEY_Page_Up) {
-		image_n += 10;
-		load_image(image_n);
+		set_n(state.n + 10);
 		return TRUE;
 	} else if (event->keyval == GDK_KEY_Page_Down) {
-		image_n -= 10;
-		load_image(image_n);
+		set_n(state.n - 10);
 		return TRUE;
 	} else if (event->keyval == GDK_KEY_q) {
 		gtk_main_quit();
 		return TRUE;
 	} else if (event->keyval == GDK_KEY_s) {
-		image_shiny = !image_shiny;
-		load_image(image_n);
+		state.shiny = !state.shiny;
+		reload_image();
 		return TRUE;
 	}
 	return FALSE;
@@ -208,14 +217,16 @@ int main(int argc, char *argv[])
 {
 	GtkWidget *window;
 
+	state.n = 1;
+
 	gtk_init(&argc, &argv);
 
 	if (argc < 2) {
-		narc = narc_open("pokegra-w.narc");
+		state.narc = narc_open("pokegra-w.narc");
 	} else {
-		narc = narc_open(argv[1]);
+		state.narc = narc_open(argv[1]);
 	}
-	if (narc == NULL) {
+	if (state.narc == NULL) {
 		fprintf(stderr, "Unable to open NARC.");
 		return 1;
 	}
@@ -227,11 +238,11 @@ int main(int argc, char *argv[])
 	g_signal_connect(G_OBJECT(window), "key-press-event",
 	                 G_CALLBACK(keypress), NULL);
 
-	img_widget = image_widget();
+	state.img = image_widget();
 	//image_set_from_png(img, "/usr/share/icons/hicolor/256x256/apps/firefox.png");
-	load_image(image_n);
+	set_n(state.n);
 
-	gtk_container_add(GTK_CONTAINER(window), img_widget);
+	gtk_container_add(GTK_CONTAINER(window), state.img);
 
 	gtk_widget_show_all(window);
 
