@@ -26,7 +26,7 @@ struct PLTT {
 		u32 padding;
 
 		u32 data_size;
-		u32 color_count;
+		u32 data_offset;
 	} header;
 
 	struct buffer *buffer;
@@ -55,7 +55,7 @@ nclr_read(void *buf, FILE *fp)
 	assert(self->pltt.header.magic == (magic_t)'PLTT');
 
 	//assert(self->pltt.header.bit_depth == 4);
-	assert(self->pltt.header.color_count == 16);
+	assert(self->pltt.header.data_offset == 16);
 
 	self->pltt.buffer = buffer_alloc(self->pltt.header.data_size);
 	if (self->pltt.buffer == NULL) {
