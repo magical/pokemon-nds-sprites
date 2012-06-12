@@ -11,9 +11,10 @@ Contents:
 .. toctree::
    :maxdepth: 2
 
+   start
    capi
    scmapi
-   style
+   pokegra
    thanks
 
 
