@@ -19,14 +19,8 @@
 #include <stdio.h>
 #include <libguile.h>
 
-#include "common.h"
 #include "nitro.h"
-#include "narc.h"
-#include "ncgr.h"
-#include "nclr.h"
-#include "nanr.h"
-#include "nmcr.h"
-#include "nmar.h"
+#include "common.h"
 #include "image.h"
 
 static scm_t_bits nitro_tag;

@@ -6,6 +6,8 @@
  * and comes with NO WARRANTY. See rip.c for details.
  */
 
+#include "nitro.h"
+
 #include <stdlib.h> /* NULL, malloc */
 #include <stdio.h> /* FILE, SEEK_CUR, feof, ferror, fread, fseeko */
 #include <string.h> /* memcpy, memset */
@@ -14,15 +16,6 @@
 
 #include "common.h" /* OKAY, FAIL, ABORT, NOMEM, FREAD, assert, struct dim */
 #include "lzss.h" /* lzss_decompress_buffer */
-#include "nitro.h"
-
-#include "narc.h" /* NARC_format */
-#include "ncgr.h" /* NCGR_format */
-#include "nclr.h" /* NCLR_format */
-#include "ncer.h" /* NCER_format */
-#include "nanr.h" /* NANR_format */
-#include "nmcr.h" /* NMCR_format */
-#include "nmar.h" /* NMAR_format */
 
 #define D(w,h) {.height=h, .width=w}
 // obj_sizes [size][shape]

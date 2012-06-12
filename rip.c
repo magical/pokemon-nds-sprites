@@ -32,13 +32,7 @@
 
 #include "common.h" /* FREE, ... */
 #include "image.h"
-#include "lzss.h"
 #include "nitro.h"
-
-#include "narc.h"
-#include "ncgr.h"
-#include "nclr.h"
-#include "ncer.h"
 
 #define FILENAME "pokegra.narc"
 #define OUTDIR "test"

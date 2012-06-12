@@ -6,16 +6,14 @@
  * and comes with NO WARRANTY. See rip.c for details.
  */
 
+#include "nitro.h"
+#include "common.h" /* OKAY, FAIL, NOMEM, struct buffer, struct dim, u8, u16, u32, FREAD, FREE, assert, warn, buffer_alloc  */
+
 #include <stdlib.h> /* NULL, size_t, ssize_t */
 #include <stdio.h> /* FILE, feof, ferror */
 #include <string.h> /* memcpy, memset */
 
 #include <sys/types.h> /* ssize_t */
-
-#include "common.h" /* OKAY, FAIL, NOMEM, struct buffer, struct dim, u8, u16, u32, FREAD, FREE, assert, warn, buffer_alloc  */
-#include "nitro.h" /* struct format_info, struct nitro, magic_t, format_header */
-
-#include "ncgr.h"
 
 
 /* NCGR */

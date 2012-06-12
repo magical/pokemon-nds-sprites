@@ -6,12 +6,11 @@
  * and comes with NO WARRANTY. See rip.c for details.
  */
 
+#include "nitro.h"
+#include "common.h" /* OKAY, FAIL, NOMEM, struct buffer, struct palette, u8, u16, u32, assert, ALLOC, CALLOC, FREE, FREAD */
+
 #include <stdio.h> /* FILE, ferror, feof */
 
-#include "common.h" /* OKAY, FAIL, NOMEM, struct buffer, struct palette, u8, u16, u32, assert, ALLOC, CALLOC, FREE, FREAD */
-#include "nitro.h" /* struct format_info, struct nitro, magic_t, format_header */
-
-#include "nclr.h"
 
 /* NCLR */
 

@@ -7,17 +7,12 @@
  * and comes with NO WARRANTY. See rip.c for details.
  */
 
-#include "nanr.h"
-#include "nmar.h"
+#include "nitro.h"
 
 #include <stdio.h> /* FILE */
 #include <math.h> /* sin, cos */
 
-#include "nitro.h" /* struct nitro, struct format_info, magic_t, format_header */
 #include "common.h" /* OKAY, FAIL, NOMEM, u8, u16, u32, s32, struct buffer */
-#include "nmcr.h" /* struct NMCR, nmcr_draw */
-#include "ncer.h" /* struct NCER */
-#include "ncgr.h" /* struct NCGR */
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846

@@ -6,16 +6,15 @@
  * and comes with NO WARRANTY. See rip.c for details.
  */
 
+#include "nitro.h"
+
 #include <stdlib.h> /* NULL, size_t */
 #include <stdio.h> /* FILE, stdout */
 #include <limits.h> /* INT_MAX, INT_MIN */
 
-#include "nitro.h" /* struct format_info, struct nitro, struct OBJ, magic_t, format_header */
-#include "ncgr.h" /* struct NCGR, ncgr_get_pixel */
 #include "image.h" /* struct image */
 #include "common.h" /* OKAY, FAIL, NOMEM, CALLOC, FREAD, assert, struct dim, struct coords, u8, u16, u32, s16, fx16 */
 
-#include "ncer.h"
 
 struct CEBK_celldata {
 	u16 obj_count;

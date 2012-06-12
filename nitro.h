@@ -10,7 +10,10 @@
 #include <stdio.h> /* FILE */
 #include <sys/types.h> /* off_t */
 
-#include "common.h" /* struct dim, u8, u16, u32, s16 */
+#include "common.h" /* struct buffer, struct palette, struct dim, struct coords,
+                       u8, u16, u32, s16, fx16 */
+#include "image.h" /* struct image */
+
 
 typedef u32 magic_t;
 
@@ -90,5 +93,87 @@ nitro_get_magic(void *chunk)
 /* convert a magic_t to a string. you must supply a char array at least 
  * MAGIC_BUF_SIZE bytes long to hold the resulting string */
 extern char *strmagic(magic_t magic, char *buf);
+
+
+/* nitro format structure declarations */
+struct NARC;
+struct NCGR;
+struct NCLR;
+struct NCER;
+struct NANR;
+struct NMCR;
+struct NMAR;
+
+#define NARC_MAGIC ((magic_t)'CRAN')
+#define NCGR_MAGIC ((magic_t)'NCGR')
+#define NCLR_MAGIC ((magic_t)'NCLR')
+#define NCER_MAGIC ((magic_t)'NCER')
+#define NANR_MAGIC ((magic_t)'NANR')
+#define NMCR_MAGIC ((magic_t)'NMCR')
+#define NMAR_MAGIC ((magic_t)'NMAR')
+
+extern struct format_info NARC_format;
+extern struct format_info NCGR_format;
+extern struct format_info NCLR_format;
+extern struct format_info NCER_format;
+extern struct format_info NANR_format;
+extern struct format_info NMCR_format;
+extern struct format_info NMAR_format;
+
+
+
+/* NARC */
+extern void *narc_load_file(struct NARC *self, int index);
+extern u32 narc_get_file_size(struct NARC *self, int index);
+extern u32 narc_get_file_count(struct NARC *self);
+
+
+/* NCGR */
+extern int ncgr_get_dim(struct NCGR *self, struct dim *dim);
+extern struct buffer *ncgr_get_pixels(struct NCGR *self);
+extern struct buffer *ncgr_get_cell_pixels(struct NCGR *self, u16 tile, struct dim cell_dim);
+
+extern void ncgr_decrypt_dp(struct NCGR *self);
+extern void ncgr_decrypt_pt(struct NCGR *self);
+
+
+/* NCLR */
+extern struct palette *nclr_get_palette(struct NCLR *self, int index);
+
+
+/* NCER */
+extern int ncer_draw_cell_t(struct NCER *self, int index, struct NCGR *ncgr, struct image *image, struct coords frame_offset, fx16 transform[4]);
+extern int ncer_draw_cell(struct NCER *self, int index, struct NCGR *ncgr, struct image *image, struct coords frame_offset);
+extern int ncer_draw_boxes(struct NCER *self, int index, struct image *image, struct coords offset);
+extern int ncer_get_cell_count(struct NCER *self);
+extern int ncer_get_cell_dim(struct NCER *self, int index, struct dim *dim, struct coords *center);
+void ncer_dump(struct NCER *self, FILE *fp);
+
+
+/* NANR */
+extern int nanr_draw_frame(struct NANR *self, int acell_index, int frame_index,
+                           struct NCER *ncer, struct NCGR *ncgr,
+                           struct image *image, struct coords frame_offset);
+extern int nanr_get_cell_count(struct NANR *nanr);
+extern int nanr_get_frame_count(struct NANR *nanr, int acell_index);
+extern int nanr_get_frame_at_tick(struct NANR *nanr, int acell_index, u16 tick);
+
+
+/* NMCR */
+extern int nmcr_draw(struct NMCR *self, int index, int tick,
+                     struct NANR *nanr, struct NCER *ncer, struct NCGR *ncgr,
+                     struct image *image, struct coords offset);
+
+
+/* NMAR */
+extern int nmar_get_cell_count(struct NMAR *self);
+extern int nmar_get_period(struct NMAR *self, int acell_index);
+extern int nmar_draw_frame(struct NMAR *self, int acell_index, int frame_index, int tick,
+                           struct NMCR *nmcr, struct NANR *nanr, struct NCER *ncer, struct NCGR *ncgr,
+                           struct image *image, struct coords offset);
+extern int nmar_draw(struct NMAR *self, int acell_index, int tick,
+                     struct NMCR *nmcr, struct NANR *nanr, struct NCER *ncer, struct NCGR *ncgr,
+                     struct image *image, struct coords offset);
+
 
 #endif /* NITRO_H */

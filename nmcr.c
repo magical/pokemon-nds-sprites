@@ -6,12 +6,10 @@
  * and comes with NO WARRANTY. See rip.c for details.
  */
 
-#include "nmcr.h"
+#include "nitro.h"
 
-#include "nitro.h" /* struct nitro, struct format_info, magic_t, format_header */
-#include "ncgr.h" /* struct NCGR */
-#include "ncer.h" /* struct NCER */
-#include "nanr.h" /* struct NANR, nanr_draw_frame */
+#include <stdio.h> /* FILE, fread */
+
 #include "image.h" /* struct image */
 #include "common.h" /* struct coords, u8, u16, u32, FREAD */
 

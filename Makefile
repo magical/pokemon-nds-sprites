@@ -35,17 +35,17 @@ rip.exe: rip.o $(objects)
 ripscript: ripscript.o $(objects)
 	$(CC) -o $@ $< $(objects) $(LDFLAGS) -lguile -pthread
 
-rip.o: rip.c common.h lzss.h image.h nitro.h narc.h ncgr.h nclr.h ncer.h Makefile
-ripscript.o: ripscript.c common.h image.h nitro.h narc.h ncgr.h nclr.h nanr.h nmcr.h nmar.h Makefile
+rip.o: rip.c common.h lzss.h image.h nitro.h Makefile
+ripscript.o: ripscript.c common.h image.h nitro.h Makefile
 common.o: common.c common.h Makefile
 lzss.o: lzss.c lzss.h common.h Makefile
-nitro.o: nitro.c nitro.h narc.h ncgr.h nclr.h ncer.h nanr.h nmcr.h common.h Makefile
-narc.o: narc.c narc.h nitro.h common.h Makefile
-ncgr.o: ncgr.c ncgr.h nitro.h common.h Makefile
-nclr.o: nclr.c nclr.h nitro.h common.h Makefile
-ncer.o: ncer.c ncer.h nitro.h ncgr.h image.h common.h Makefile
-nanr.o: nanr.c nanr.h nmar.h nitro.h ncgr.h ncer.h image.h common.h Makefile
-nmcr.o: nmcr.c nmcr.h nitro.h ncgr.h ncer.h nanr.h image.h common.h Makefile
+nitro.o: nitro.c nitro.h common.h Makefile
+narc.o: narc.c nitro.h common.h Makefile
+ncgr.o: ncgr.c nitro.h common.h Makefile
+nclr.o: nclr.c nitro.h common.h Makefile
+ncer.o: ncer.c nitro.h image.h common.h Makefile
+nanr.o: nanr.c nitro.h image.h common.h Makefile
+nmcr.o: nmcr.c nitro.h image.h common.h Makefile
 image.o: image.c image.h common.h
 
 .PHONY: clean

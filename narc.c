@@ -6,13 +6,13 @@
  * and comes with NO WARRANTY. See rip.c for details.
  */
 
+#include "nitro.h"
+
 #include <stdlib.h> /* NULL */
 #include <stdio.h> /* FILE, SEEK_CUR, SEEK_SET, off_t, feof, ferror, fseeko, ftello */
 
-#include "nitro.h" /* struct format_info, struct nitro, magic_t, format_header, nitro_read */
 #include "common.h" /* OKAY, FAIL, NOMEM, assert, FREAD, CALLOC, FREE, u32 */
 
-#include "narc.h"
 
 /* NARC */
 struct FATB {
