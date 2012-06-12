@@ -41,6 +41,7 @@ typedef uint16_t u16;
 typedef uint32_t u32;
 
 typedef int16_t s16;
+typedef int32_t s32;
 
 typedef s16 v16; // 1.3.12 fixed-point
 typedef s16 fx16; // 1.7.8 fixed-point

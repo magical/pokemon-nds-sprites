@@ -14,7 +14,7 @@
 #include <math.h> /* sin, cos */
 
 #include "nitro.h" /* struct nitro, struct format_info, magic_t, format_header */
-#include "common.h" /* OKAY, FAIL, NOMEM, u8, u16, u32, struct buffer */
+#include "common.h" /* OKAY, FAIL, NOMEM, u8, u16, u32, s32, struct buffer */
 #include "nmcr.h" /* struct NMCR, nmcr_draw */
 #include "ncer.h" /* struct NCER */
 #include "ncgr.h" /* struct NCGR */
@@ -61,10 +61,8 @@ struct frame_data_1 {
 
 	s16 theta; // angle in 65536 degrees
 
-	v16 x_mag;
-	v16 x_unknown;
-	v16 y_mag;
-	v16 y_unknown;
+	s32 x_mag; // 1.19.12 fixed point
+	s32 y_mag;
 
 	s16 x;
 	s16 y;
@@ -209,6 +207,16 @@ struct format_info NMAR_format = {
 
 /* Methods */
 
+static int sin16(int theta)
+{
+	return (int)(sin(theta * (2*M_PI) / 0x10000) * 0x1000);
+}
+
+static int cos16(int theta)
+{
+	return (int)(cos(theta * (2*M_PI) / 0x10000) * 0x1000);
+}
+
 static int
 get_frame_data(struct ABNK *abnk, struct acell *acell, int frame_index,
                int *cell_index, fx16 m[], struct coords *offset)
@@ -233,28 +241,13 @@ get_frame_data(struct ABNK *abnk, struct acell *acell, int frame_index,
 		struct frame_data_1 *frame_data = data;
 		*cell_index = frame_data->cell_index;
 
-		// floating point operations! :o
-		// cheating, i know.
-		// if this looks backwards, it's because we're forming the
-		// *inverse* matrix.
-		double theta = frame_data->theta * (2 * M_PI) / 0x10000;
-		/*warn("\ntheta=%f x=%f y=%f", theta,
-		                             frame_data->x_mag / 4096.0,
-		                             frame_data->y_mag / 4096.0);*/
-		m[0] = (fx16)( cos(theta) * 0x1000 / frame_data->x_mag * 0x100);
-		m[1] = (fx16)(+sin(theta) * 0x1000 / frame_data->x_mag * 0x100);
-		m[2] = (fx16)(-sin(theta) * 0x1000 / frame_data->y_mag * 0x100);
-		m[3] = (fx16)( cos(theta) * 0x1000 / frame_data->y_mag * 0x100);
+		int sin_theta = sin16(frame_data->theta);
+		int cos_theta = cos16(frame_data->theta);
 
-		/*m[0] = (fx16)(frame_data->x_mag / 4096.0 * 0x100);
-		m[1] = (fx16)(0);
-		m[2] = (fx16)(0);
-		m[3] = (fx16)(frame_data->y_mag / 4096.0 * 0x100);*/
-		/*double theta = frame_data->theta / 4096.0 / 8;
-		m[0] = (fx16)( cos(theta) * frame_data->x_mag / 16);
-		m[1] = (fx16)(+sin(theta) * frame_data->x_mag / 16);
-		m[2] = (fx16)(-sin(theta) * frame_data->y_mag / 16);
-		m[3] = (fx16)( cos(theta) * frame_data->y_mag / 16);*/
+		m[0] = 0x100 *  cos_theta / frame_data->x_mag;
+		m[1] = 0x100 * +sin_theta / frame_data->x_mag;
+		m[2] = 0x100 * -sin_theta / frame_data->y_mag;
+		m[3] = 0x100 *  cos_theta / frame_data->y_mag;
 
 		offset->x = frame_data->x;
 		offset->y = frame_data->y;
