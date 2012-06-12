@@ -230,6 +230,48 @@ static SCM image_set_pixels_from_ncgr(SCM s_image, SCM s_ncgr)
 	return SCM_UNSPECIFIED;
 }
 
+static SCM image_set_pixels_from_ncer(SCM obj, SCM s_ncer, SCM s_cell_index, SCM s_ncgr)
+{
+	assert_nitro_type('NCER', s_ncer);
+	assert_nitro_type('NCGR', s_ncgr);
+	scm_assert_smob_type(image_tag, obj);
+
+	int cell_index = scm_to_int(s_cell_index);
+
+	struct NCER *ncer = (void *) SCM_SMOB_DATA(s_ncer);
+	struct NCGR *ncgr = (void *) SCM_SMOB_DATA(s_ncgr);
+	struct image *image = (void *) SCM_SMOB_DATA(obj);
+
+	struct dim dim;
+	struct coords center;
+
+	ncer_get_cell_dim(ncer, cell_index, &dim, &center);
+
+	struct buffer *oldpixels = image->pixels;
+	struct image newimage;
+
+	newimage.dim = dim;
+	newimage.pixels = buffer_alloc(dim.width * dim.height);
+
+	if (newimage.pixels == NULL) {
+		scm_memory_error("make-image");
+	}
+
+	if (ncer_draw_cell(ncer, cell_index, ncgr, &newimage, center)) {
+		FREE(newimage.pixels);
+
+		SCM s = scm_from_locale_string("ncer-error");
+		scm_error(s, "image-set-pixels-from-ncer", "error drawing cells", SCM_BOOL_F, SCM_BOOL_F);
+	}
+
+	image->pixels = newimage.pixels;
+	image->dim = newimage.dim;
+
+	FREE(oldpixels);
+
+	return SCM_UNSPECIFIED;
+}
+
 static SCM image_set_palette_from_nclr(SCM s_image, SCM s_nclr)
 {
 	scm_assert_smob_type(image_tag, s_image);
@@ -375,6 +417,13 @@ static SCM save_gif(SCM s_filename, SCM s_dim, SCM s_nclr, SCM s_fps, SCM callba
 	return SCM_UNSPECIFIED;
 }
 
+static SCM ncer_get_cell_count_s(SCM obj)
+{
+	assert_nitro_type('NCER', obj);
+	struct NCER *ncer = (void *) SCM_SMOB_DATA(obj);
+
+	return scm_from_int(ncer_get_cell_count(ncer));
+}
 
 static SCM nanr_draw_frame_s(SCM obj, SCM s_cell_index, SCM s_frame_index, SCM s_ncer, SCM s_ncgr, SCM s_image)
 {
@@ -523,10 +572,12 @@ main_callback(void *data, int argc, char *argv[])
 	scm_c_define_gsubr("ncgr-decrypt-pt", 1, 0, 0, decrypt_pt);
 	scm_c_define_gsubr("ncgr-decrypt-dp", 1, 0, 0, decrypt_dp);
 	scm_c_define_gsubr("image-set-pixels-from-ncgr", 2, 0, 0, image_set_pixels_from_ncgr);
+	scm_c_define_gsubr("image-set-pixels-from-ncer", 4, 0, 0, image_set_pixels_from_ncer);
 	scm_c_define_gsubr("image-set-palette-from-nclr", 2, 0, 0, image_set_palette_from_nclr);
 	scm_c_define_gsubr("image-save-png", 2, 0, 0, image_save_png);
 	scm_c_define_gsubr("image-save-gif", 2, 0, 0, image_save_gif);
 	scm_c_define_gsubr("save-gif", 5, 0, 0, save_gif);
+	scm_c_define_gsubr("ncer-get-cell-count", 1, 0, 0, ncer_get_cell_count_s);
 	scm_c_define_gsubr("nanr-draw-frame", 6, 0, 0, nanr_draw_frame_s);
 	scm_c_define_gsubr("nanr-cell-count", 1, 0, 0, nanr_cell_count);
 	scm_c_define_gsubr("nanr-frame-count", 2, 0, 0, nanr_frame_count);

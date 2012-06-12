@@ -503,4 +503,26 @@ ncer_draw_boxes(struct NCER *self, int index, struct image *image, struct coords
 	return OKAY;
 }
 
+int
+ncer_get_cell_count(struct NCER *self)
+{
+	assert(self != NULL);
+	assert(self->header.magic == (magic_t)'NCER');
 
+	return self->cebk.header.cell_count;
+}
+
+
+int
+ncer_get_cell_dim(struct NCER *self, int index, struct dim *dim, struct coords *center)
+{
+	assert(self != NULL);
+	assert(self->header.magic == (magic_t)'NCER');
+	assert(dim != NULL);
+	assert(center != NULL);
+
+	assert(0 <= index && index < self->cebk.header.cell_count);
+
+	ncer_get_size(self, index, dim, center);
+	return OKAY;
+}

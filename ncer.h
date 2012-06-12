@@ -22,6 +22,8 @@ struct NCGR;
 extern int ncer_draw_cell_t(struct NCER *self, int index, struct NCGR *ncgr, struct image *image, struct coords frame_offset, fx16 transform[4]);
 extern int ncer_draw_cell(struct NCER *self, int index, struct NCGR *ncgr, struct image *image, struct coords frame_offset);
 extern int ncer_draw_boxes(struct NCER *self, int index, struct image *image, struct coords offset);
+extern int ncer_get_cell_count(struct NCER *self);
+extern int ncer_get_cell_dim(struct NCER *self, int index, struct dim *dim, struct coords *center);
 void ncer_dump(struct NCER *self, FILE *fp);
 
 #endif /* NCER_H */
