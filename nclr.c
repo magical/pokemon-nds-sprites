@@ -74,7 +74,7 @@ static void
 nclr_free(void *buf) {
 	struct NCLR *self = buf;
 
-	if (self != NULL ||
+	if (self != NULL &&
 	    self->header.magic == (magic_t)'NCLR') {
 		FREE(self->pltt.buffer);
 	}

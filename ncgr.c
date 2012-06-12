@@ -82,7 +82,7 @@ static void
 ncgr_free(void *buf) {
 	struct NCGR *self = buf;
 
-	if (self != NULL ||
+	if (self != NULL &&
 	    self->header.magic == (magic_t)'NCGR') {
 		FREE(self->char_.buffer);
 	}

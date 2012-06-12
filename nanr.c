@@ -158,7 +158,7 @@ nanr_free(void *buf)
 	struct NANR *self = buf;
 	if (self != NULL &&
 	    self->header.magic == NANR_MAGIC) {
-		free(self->abnk.data);
+		FREE(self->abnk.data);
 	}
 }
 
@@ -195,7 +195,7 @@ nmar_free(void *buf)
 	struct NMAR *self = buf;
 	if (self != NULL &&
 	    self->header.magic == NMAR_MAGIC) {
-		free(self->abnk.data);
+		FREE(self->abnk.data);
 	}
 }
 

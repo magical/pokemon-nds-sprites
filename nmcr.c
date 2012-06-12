@@ -97,7 +97,7 @@ nmcr_free(void *buf)
 	struct NMCR *self = buf;
 	if (self != NULL &&
 	    self->header.magic == NMCR_MAGIC) {
-		free(self->mcbk.data);
+		FREE(self->mcbk.data);
 	}
 }
 
