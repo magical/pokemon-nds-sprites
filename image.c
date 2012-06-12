@@ -21,9 +21,6 @@
 
 #include "image.h" /* struct image */
 
-//#include "ncgr.h"
-//#include "nclr.h"
-
 
 static inline int
 maxval_from_bitdepth(int bit_depth)
@@ -403,28 +400,6 @@ image_draw_square(struct image *self, struct coords start, struct coords end)
 }
 
 #if 0
-int
-image_init(struct image *self, struct NCGR *ncgr, struct NCLR *nclr)
-{
-	assert(self != NULL);
-	assert(ncgr != NULL);
-	assert(nclr != NULL);
-
-	const int palette_index = 0;
-
-	struct buffer *pixels = ncgr_get_pixels(ncgr);
-	struct palette *palette = nclr_get_palette(nclr, palette_index);
-
-	if (pixels != NULL && palette != NULL) {
-		memset(self, 0, sizeof(*self));
-		ncgr_get_dim(ncgr, &self->dim);
-		return OKAY;
-	} else {
-		image_free(self);
-		return FAIL;
-	}
-}
-
 void
 image_free(struct image *self)
 {
