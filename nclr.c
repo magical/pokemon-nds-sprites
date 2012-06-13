@@ -50,7 +50,7 @@ nclr_read(void *buf, FILE *fp)
 		return FAIL;
 	}
 
-	assert(self->header.magic == (magic_t)'NCLR');
+	assert(self->header.magic == NCLR_MAGIC);
 	assert(self->pltt.header.magic == (magic_t)'PLTT');
 
 	//assert(self->pltt.header.bit_depth == 4);
@@ -74,13 +74,13 @@ nclr_free(void *buf) {
 	struct NCLR *self = buf;
 
 	if (self != NULL &&
-	    self->header.magic == (magic_t)'NCLR') {
+	    self->header.magic == NCLR_MAGIC) {
 		FREE(self->pltt.buffer);
 	}
 }
 
 struct format_info NCLR_format = {
-	format_header('NCLR', struct NCLR),
+	format_header(NCLR_MAGIC, struct NCLR),
 
 	.read = nclr_read,
 	.free = nclr_free,

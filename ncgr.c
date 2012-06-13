@@ -81,13 +81,13 @@ ncgr_free(void *buf) {
 	struct NCGR *self = buf;
 
 	if (self != NULL &&
-	    self->header.magic == (magic_t)'NCGR') {
+	    self->header.magic == NCGR_MAGIC) {
 		FREE(self->char_.buffer);
 	}
 }
 
 struct format_info NCGR_format = {
-	format_header('NCGR', struct NCGR),
+	format_header(NCGR_MAGIC, struct NCGR),
 	
 	.read = ncgr_read,
 	.free = ncgr_free,

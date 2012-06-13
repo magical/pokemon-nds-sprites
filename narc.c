@@ -118,7 +118,7 @@ narc_free(void *buf)
 	struct NARC *self = buf;
 
 	if (self != NULL &&
-	    self->header.magic == (magic_t)'CRAN') {
+	    self->header.magic == NARC_MAGIC) {
 		FREE(self->fatb.records);
 	}
 }
@@ -174,7 +174,7 @@ narc_load_file(struct NARC *self, int index)
 
 /* the NARC signature is big-endian for some reason */
 struct format_info NARC_format = {
-	format_header('CRAN', struct NARC),
+	format_header(NARC_MAGIC, struct NARC),
 	
 	.read = narc_read,
 	.free = narc_free,

@@ -66,7 +66,7 @@ static SCM load_narc(SCM s_filename)
 
 static SCM file_count(SCM obj)
 {
-	assert_nitro_type('CRAN', obj);
+	assert_nitro_type(NARC_MAGIC, obj);
 	void *data = (void *) SCM_SMOB_DATA(obj);
 	struct NARC *narc = data;
 
@@ -75,7 +75,7 @@ static SCM file_count(SCM obj)
 
 static SCM get_file_size(SCM s_narc, SCM s_n)
 {
-	assert_nitro_type('CRAN', s_narc);
+	assert_nitro_type(NARC_MAGIC, s_narc);
 	void *data = (void *) SCM_SMOB_DATA(s_narc);
 	struct NARC *narc = data;
 
@@ -88,7 +88,7 @@ static SCM get_magic(SCM obj);
 
 static SCM load_narc_file(SCM s_narc, SCM s_n, SCM s_type)
 {
-	assert_nitro_type('CRAN', s_narc);
+	assert_nitro_type(NARC_MAGIC, s_narc);
 	void *data = (void *) SCM_SMOB_DATA(s_narc);
 	struct NARC *narc = data;
 
@@ -184,7 +184,7 @@ static size_t free_image(SCM obj)
 
 static SCM decrypt_pt(SCM obj)
 {
-	assert_nitro_type('NCGR', obj);
+	assert_nitro_type(NCGR_MAGIC, obj);
 	struct NCGR *ncgr = (void *) SCM_SMOB_DATA(obj);
 	ncgr_decrypt_pt(ncgr);
 
@@ -193,7 +193,7 @@ static SCM decrypt_pt(SCM obj)
 
 static SCM decrypt_dp(SCM obj)
 {
-	assert_nitro_type('NCGR', obj);
+	assert_nitro_type(NCGR_MAGIC, obj);
 	struct NCGR *ncgr = (void *) SCM_SMOB_DATA(obj);
 	ncgr_decrypt_dp(ncgr);
 
@@ -203,7 +203,7 @@ static SCM decrypt_dp(SCM obj)
 static SCM image_set_pixels_from_ncgr(SCM s_image, SCM s_ncgr)
 {
 	scm_assert_smob_type(image_tag, s_image);
-	assert_nitro_type('NCGR', s_ncgr);
+	assert_nitro_type(NCGR_MAGIC, s_ncgr);
 
 	struct image *image = (void *) SCM_SMOB_DATA(s_image);
 	struct NCGR *ncgr = (void *) SCM_SMOB_DATA(s_ncgr);
@@ -226,8 +226,8 @@ static SCM image_set_pixels_from_ncgr(SCM s_image, SCM s_ncgr)
 
 static SCM image_set_pixels_from_ncer(SCM obj, SCM s_ncer, SCM s_cell_index, SCM s_ncgr)
 {
-	assert_nitro_type('NCER', s_ncer);
-	assert_nitro_type('NCGR', s_ncgr);
+	assert_nitro_type(NCER_MAGIC, s_ncer);
+	assert_nitro_type(NCGR_MAGIC, s_ncgr);
 	scm_assert_smob_type(image_tag, obj);
 
 	int cell_index = scm_to_int(s_cell_index);
@@ -269,7 +269,7 @@ static SCM image_set_pixels_from_ncer(SCM obj, SCM s_ncer, SCM s_cell_index, SCM
 static SCM image_set_palette_from_nclr(SCM s_image, SCM s_nclr)
 {
 	scm_assert_smob_type(image_tag, s_image);
-	assert_nitro_type('NCLR', s_nclr);
+	assert_nitro_type(NCLR_MAGIC, s_nclr);
 
 	struct image *image = (void *) SCM_SMOB_DATA(s_image);
 	struct NCLR *nclr = (void *) SCM_SMOB_DATA(s_nclr);
@@ -364,7 +364,7 @@ static SCM save_gif(SCM s_filename, SCM s_dim, SCM s_nclr, SCM s_fps, SCM callba
 		scm_wrong_type_arg("save-gif", SCM_ARG2, callback);
 	}
 
-	assert_nitro_type((magic_t)'NCLR', s_nclr);
+	assert_nitro_type(NCLR_MAGIC, s_nclr);
 
 	SCM gif_error = scm_from_locale_string("gif-error");
 
@@ -413,7 +413,7 @@ static SCM save_gif(SCM s_filename, SCM s_dim, SCM s_nclr, SCM s_fps, SCM callba
 
 static SCM ncer_get_cell_count_s(SCM obj)
 {
-	assert_nitro_type('NCER', obj);
+	assert_nitro_type(NCER_MAGIC, obj);
 	struct NCER *ncer = (void *) SCM_SMOB_DATA(obj);
 
 	return scm_from_int(ncer_get_cell_count(ncer));
@@ -422,8 +422,8 @@ static SCM ncer_get_cell_count_s(SCM obj)
 static SCM nanr_draw_frame_s(SCM obj, SCM s_cell_index, SCM s_frame_index, SCM s_ncer, SCM s_ncgr, SCM s_image)
 {
 	assert_nitro_type(NANR_MAGIC, obj);
-	assert_nitro_type('NCER', s_ncer);
-	assert_nitro_type('NCGR', s_ncgr);
+	assert_nitro_type(NCER_MAGIC, s_ncer);
+	assert_nitro_type(NCGR_MAGIC, s_ncgr);
 	scm_assert_smob_type(image_tag, s_image);
 
 	int cell_index = scm_to_int(s_cell_index);
@@ -466,8 +466,8 @@ static SCM nmcr_draw_cell_s(SCM obj, SCM s_cell_index, SCM s_frame_index, SCM s_
 {
 	assert_nitro_type(NMCR_MAGIC, obj);
 	assert_nitro_type(NANR_MAGIC, s_nanr);
-	assert_nitro_type('NCER', s_ncer);
-	assert_nitro_type('NCGR', s_ncgr);
+	assert_nitro_type(NCER_MAGIC, s_ncer);
+	assert_nitro_type(NCGR_MAGIC, s_ncgr);
 	scm_assert_smob_type(image_tag, s_image);
 
 	int cell_index = scm_to_int(s_cell_index);
@@ -516,8 +516,8 @@ static SCM nmar_draw_s(SCM obj, SCM s_cell_index, SCM s_tick, SCM s_nmcr, SCM s_
 	assert_nitro_type(NMAR_MAGIC, obj);
 	assert_nitro_type(NMCR_MAGIC, s_nmcr);
 	assert_nitro_type(NANR_MAGIC, s_nanr);
-	assert_nitro_type('NCER', s_ncer);
-	assert_nitro_type('NCGR', s_ncgr);
+	assert_nitro_type(NCER_MAGIC, s_ncer);
+	assert_nitro_type(NCGR_MAGIC, s_ncgr);
 	scm_assert_smob_type(image_tag, s_image);
 
 	int cell_index = scm_to_int(s_cell_index);

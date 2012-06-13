@@ -77,7 +77,7 @@ ncer_read(void *buf, FILE *fp)
 	assert(self != NULL);
 
 	FREAD(fp, &self->header, 1);
-	assert(self->header.magic == (magic_t)'NCER');
+	assert(self->header.magic == NCER_MAGIC);
 	assert(self->header.chunk_count == 3 || self->header.chunk_count == 1);
 
 	FREAD(fp, &self->cebk.header, 1);
@@ -128,7 +128,7 @@ ncer_free(void *buf)
 {
 	struct NCER *self = buf;
 	if (self != NULL &&
-	    self->header.magic == (magic_t)'NCER') {
+	    self->header.magic == NCER_MAGIC) {
 		FREE(self->cebk.cell_data);
 		FREE(self->cebk.cell_data_ex);
 		FREE(self->cebk.obj_data);
@@ -137,7 +137,7 @@ ncer_free(void *buf)
 }
 
 struct format_info NCER_format = {
-	format_header('NCER', struct NCER),
+	format_header(NCER_MAGIC, struct NCER),
 
 	.read = ncer_read,
 	.free = ncer_free,
@@ -151,7 +151,7 @@ void
 ncer_dump(struct NCER *self, FILE *fp)
 {
 	assert(self != NULL);
-	assert(nitro_get_magic(self) == (magic_t)'NCER');
+	assert(nitro_get_magic(self) == NCER_MAGIC);
 
 	if (fp == NULL) {
 		fp = stdout;
@@ -419,7 +419,7 @@ int
 ncer_draw_cell_t(struct NCER *self, int index, struct NCGR *ncgr, struct image *image, struct coords offset, fx16 transform[4])
 {
 	assert(self != NULL);
-	assert(self->header.magic == (magic_t)'NCER');
+	assert(self->header.magic == NCER_MAGIC);
 	assert(ncgr != NULL);
 	assert(image != NULL);
 	assert(image->pixels != NULL);
@@ -459,7 +459,7 @@ int
 ncer_draw_cell(struct NCER *self, int index, struct NCGR *ncgr, struct image *image, struct coords offset)
 {
 	assert(self != NULL);
-	assert(self->header.magic == (magic_t)'NCER');
+	assert(self->header.magic == NCER_MAGIC);
 	assert(ncgr != NULL);
 	assert(image != NULL);
 	assert(image->pixels != NULL);
@@ -471,7 +471,7 @@ int
 ncer_draw_boxes(struct NCER *self, int index, struct image *image, struct coords offset)
 {
 	assert(self != NULL);
-	assert(self->header.magic == (magic_t)'NCER');
+	assert(self->header.magic == NCER_MAGIC);
 	assert(image != NULL);
 	assert(image->pixels != NULL);
 
@@ -506,7 +506,7 @@ int
 ncer_get_cell_count(struct NCER *self)
 {
 	assert(self != NULL);
-	assert(self->header.magic == (magic_t)'NCER');
+	assert(self->header.magic == NCER_MAGIC);
 
 	return self->cebk.header.cell_count;
 }
@@ -516,7 +516,7 @@ int
 ncer_get_cell_dim(struct NCER *self, int index, struct dim *dim, struct coords *center)
 {
 	assert(self != NULL);
-	assert(self->header.magic == (magic_t)'NCER');
+	assert(self->header.magic == NCER_MAGIC);
 	assert(dim != NULL);
 	assert(center != NULL);
 

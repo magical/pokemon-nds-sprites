@@ -60,7 +60,7 @@ open_narc(const char *filename)
 		goto error;
 	}
 
-	if (nitro_get_magic(narc) != (magic_t)'CRAN') {
+	if (nitro_get_magic(narc) != NARC_MAGIC) {
 		warn("Not a NARC");
 		goto error;
 	}
@@ -197,8 +197,8 @@ rip_sprites(void)
 			exit(EXIT_FAILURE);
 		}
 
-		assert(nitro_get_magic(normal_nclr) == (magic_t)'NCLR');
-		assert(nitro_get_magic(shiny_nclr) == (magic_t)'NCLR');
+		assert(nitro_get_magic(normal_nclr) == NCLR_MAGIC);
+		assert(nitro_get_magic(shiny_nclr) == NCLR_MAGIC);
 
 		struct palette *normal_palette = nclr_get_palette(normal_nclr, 0);
 		struct palette *shiny_palette = nclr_get_palette(shiny_nclr, 0);
@@ -224,7 +224,7 @@ rip_sprites(void)
 				continue;
 			}
 
-			assert(nitro_get_magic(ncgr) == (magic_t)'NCGR');
+			assert(nitro_get_magic(ncgr) == NCGR_MAGIC);
 			ncgr_decrypt_pt(ncgr);
 
 			sprintf(outfile, "%s/%s/%d", OUTDIR, d->normal, n);
@@ -265,7 +265,7 @@ static void
 rip_bw_sprites(void)
 {
 	struct NARC *narc = open_narc(FILENAME);
-	struct NCER *ncer = open_nitro("bw-pokemon.ncer", 'NCER');
+	struct NCER *ncer = open_nitro("bw-pokemon.ncer", NCER_MAGIC);
 
 	char outfile[256] = "";
 
@@ -312,8 +312,8 @@ rip_bw_sprites(void)
 			exit(EXIT_FAILURE);
 		}
 
-		assert(nitro_get_magic(normal_nclr) == (magic_t)'NCLR');
-		assert(nitro_get_magic(shiny_nclr) == (magic_t)'NCLR');
+		assert(nitro_get_magic(normal_nclr) == NCLR_MAGIC);
+		assert(nitro_get_magic(shiny_nclr) == NCLR_MAGIC);
 
 		struct palette *normal_palette = nclr_get_palette(normal_nclr, 0);
 		struct palette *shiny_palette = nclr_get_palette(shiny_nclr, 0);
@@ -349,7 +349,7 @@ rip_bw_sprites(void)
 				continue;
 			}
 
-			assert(nitro_get_magic(ncgr) == (magic_t)'NCGR');
+			assert(nitro_get_magic(ncgr) == NCGR_MAGIC);
 
 			sprintf(outfile, "%s/%s/%d", OUTDIR, d->normal, n);
 
@@ -397,7 +397,7 @@ static void
 rip_bw_trainers(void)
 {
 	struct NARC *narc = open_narc(FILENAME);
-	struct NCER *ncer = open_nitro("bw-trainer.ncer", 'NCER');
+	struct NCER *ncer = open_nitro("bw-trainer.ncer", NCER_MAGIC);
 
 	char outfile[256] = "";
 
@@ -428,7 +428,7 @@ rip_bw_trainers(void)
 			exit(EXIT_FAILURE);
 		}
 
-		assert(nitro_get_magic(normal_nclr) == (magic_t)'NCLR');
+		assert(nitro_get_magic(normal_nclr) == NCLR_MAGIC);
 
 		struct palette *normal_palette = nclr_get_palette(normal_nclr, 0);
 
@@ -463,7 +463,7 @@ rip_bw_trainers(void)
 				continue;
 			}
 
-			assert(nitro_get_magic(ncgr) == (magic_t)'NCGR');
+			assert(nitro_get_magic(ncgr) == NCGR_MAGIC);
 
 			sprintf(outfile, "%s/%s/%d", OUTDIR, dir, n);
 
@@ -527,7 +527,7 @@ rip_trainers(void)
 			if (errno) perror(outfile);
 			continue;
 		}
-		assert(nitro_get_magic(ncgr) == (magic_t)'NCGR');
+		assert(nitro_get_magic(ncgr) == NCGR_MAGIC);
 
 		struct NCLR *nclr = narc_load_file(narc, n*2 + 1);
 		if (nclr == NULL) {
@@ -536,7 +536,7 @@ rip_trainers(void)
 			FREE(ncgr);
 			continue;
 		}
-		assert(nitro_get_magic(nclr) == (magic_t)'NCLR');
+		assert(nitro_get_magic(nclr) == NCLR_MAGIC);
 
 		image.palette = nclr_get_palette(nclr, 0);
 		if (image.palette == NULL) {
@@ -589,7 +589,7 @@ rip_trainers2(void)
 			if (errno) perror(NULL);
 			continue;
 		}
-		assert(nitro_get_magic(nclr) == (magic_t)'NCLR');
+		assert(nitro_get_magic(nclr) == NCLR_MAGIC);
 
 		image.palette = nclr_get_palette(nclr, 0);
 		if (image.palette == NULL) {
@@ -621,7 +621,7 @@ rip_trainers2(void)
 				if (errno) perror(outfile);
 				continue;
 			}
-			assert(nitro_get_magic(ncgr) == (magic_t)'NCGR');
+			assert(nitro_get_magic(ncgr) == NCGR_MAGIC);
 
 			if (i == 1) {
 				/* pt for platinum, dp for hgss */
@@ -659,13 +659,13 @@ rip_footprint(void)
 	struct NARC *narc = open_narc(FILENAME);
 
 	struct NCER *ncer = narc_load_file(narc, 4);
-	assert(nitro_get_magic(ncer) == (magic_t)'NCER');
+	assert(nitro_get_magic(ncer) == NCER_MAGIC);
 
 	struct NCGR *ncgr = narc_load_file(narc, 383+5);
-	assert(nitro_get_magic(ncgr) == (magic_t)'NCGR');
+	assert(nitro_get_magic(ncgr) == NCGR_MAGIC);
 
 	struct NCLR *nclr = narc_load_file(narc, 0);
-	assert(nitro_get_magic(nclr) == (magic_t)'NCLR');
+	assert(nitro_get_magic(nclr) == NCLR_MAGIC);
 
 	ncer_dump(ncer, NULL);
 
@@ -692,7 +692,7 @@ rip_footprint(void)
 static void
 dump_ncer(void)
 {
-	struct NCER *ncer = open_nitro("venu.ncer", 'NCER');
+	struct NCER *ncer = open_nitro("venu.ncer", NCER_MAGIC);
 
 	ncer_dump(ncer, NULL);
 
@@ -702,9 +702,9 @@ dump_ncer(void)
 static void
 render_ncer(void)
 {
-	struct NCER *ncer = open_nitro("venu.ncer", 'NCER');
-	struct NCGR *ncgr = open_nitro("venu-parts.ncgr", 'NCGR');
-	struct NCLR *nclr = open_nitro("venu.nclr", 'NCLR');
+	struct NCER *ncer = open_nitro("venu.ncer", NCER_MAGIC);
+	struct NCGR *ncgr = open_nitro("venu-parts.ncgr", NCGR_MAGIC);
+	struct NCLR *nclr = open_nitro("venu.nclr", NCLR_MAGIC);
 
 	struct image image = {};
 
