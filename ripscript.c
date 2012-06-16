@@ -26,7 +26,7 @@
 static scm_t_bits nitro_tag;
 static scm_t_bits image_tag;
 
-static SCM hello_world(void)
+static SCM rip_hello_world(void)
 {
 	printf("hello, world\n");
 	return SCM_BOOL_F;
@@ -41,7 +41,7 @@ static void assert_nitro_type(magic_t magic, SCM s_nitro)
 	}
 }
 
-static SCM load_narc(SCM s_filename)
+static SCM rip_load_narc(SCM s_filename)
 {
 	scm_dynwind_begin(0);
 
@@ -64,7 +64,7 @@ static SCM load_narc(SCM s_filename)
 	SCM_RETURN_NEWSMOB(nitro_tag, narc);
 }
 
-static SCM file_count(SCM obj)
+static SCM rip_narc_get_file_count(SCM obj)
 {
 	assert_nitro_type(NARC_MAGIC, obj);
 	void *data = (void *) SCM_SMOB_DATA(obj);
@@ -73,7 +73,7 @@ static SCM file_count(SCM obj)
 	return scm_from_int(narc_get_file_count(narc));
 }
 
-static SCM get_file_size(SCM s_narc, SCM s_n)
+static SCM rip_narc_get_file_size(SCM s_narc, SCM s_n)
 {
 	assert_nitro_type(NARC_MAGIC, s_narc);
 	void *data = (void *) SCM_SMOB_DATA(s_narc);
@@ -84,9 +84,9 @@ static SCM get_file_size(SCM s_narc, SCM s_n)
 	return scm_from_int(narc_get_file_size(narc, n));
 }
 
-static SCM get_magic(SCM obj);
+static SCM rip_get_magic(SCM obj);
 
-static SCM load_narc_file(SCM s_narc, SCM s_n, SCM s_type)
+static SCM rip_narc_load_file(SCM s_narc, SCM s_n, SCM s_type)
 {
 	assert_nitro_type(NARC_MAGIC, s_narc);
 	void *data = (void *) SCM_SMOB_DATA(s_narc);
@@ -105,7 +105,7 @@ static SCM load_narc_file(SCM s_narc, SCM s_n, SCM s_type)
 
 	if (s_type == SCM_UNDEFINED) { }
 	else if (scm_is_symbol(s_type)) {
-		SCM s_magic = get_magic(s_nitro);
+		SCM s_magic = rip_get_magic(s_nitro);
 		if (!scm_is_eq(s_magic, s_type)) { goto error; }
 	} else {
 		scm_wrong_type_arg("narc-load-file", SCM_ARG3, s_type);
@@ -121,7 +121,7 @@ error:
 	}
 }
 
-static SCM get_magic(SCM obj)
+static SCM rip_get_magic(SCM obj)
 {
 	scm_assert_smob_type(nitro_tag, obj);
 	void *data = (void *) SCM_SMOB_DATA(obj);
@@ -145,7 +145,7 @@ static size_t free_nitro(SCM obj)
 	return 0;
 }
 
-static SCM make_image(SCM s_dim)
+static SCM rip_make_image(SCM s_dim)
 {
 	struct image *image = scm_gc_malloc(sizeof(struct image), "image");
 	image->pixels = NULL;
@@ -182,7 +182,7 @@ static size_t free_image(SCM obj)
 	return 0;
 }
 
-static SCM decrypt_pt(SCM obj)
+static SCM rip_ncgr_decrypt_pt(SCM obj)
 {
 	assert_nitro_type(NCGR_MAGIC, obj);
 	struct NCGR *ncgr = (void *) SCM_SMOB_DATA(obj);
@@ -191,7 +191,7 @@ static SCM decrypt_pt(SCM obj)
 	return SCM_UNSPECIFIED;
 }
 
-static SCM decrypt_dp(SCM obj)
+static SCM rip_ncgr_decrypt_dp(SCM obj)
 {
 	assert_nitro_type(NCGR_MAGIC, obj);
 	struct NCGR *ncgr = (void *) SCM_SMOB_DATA(obj);
@@ -200,7 +200,7 @@ static SCM decrypt_dp(SCM obj)
 	return SCM_UNSPECIFIED;
 }
 
-static SCM image_set_pixels_from_ncgr(SCM s_image, SCM s_ncgr)
+static SCM rip_image_set_pixels_from_ncgr(SCM s_image, SCM s_ncgr)
 {
 	scm_assert_smob_type(image_tag, s_image);
 	assert_nitro_type(NCGR_MAGIC, s_ncgr);
@@ -224,7 +224,7 @@ static SCM image_set_pixels_from_ncgr(SCM s_image, SCM s_ncgr)
 	return SCM_UNSPECIFIED;
 }
 
-static SCM image_set_pixels_from_ncer(SCM obj, SCM s_ncer, SCM s_cell_index, SCM s_ncgr)
+static SCM rip_image_set_pixels_from_ncer(SCM obj, SCM s_ncer, SCM s_cell_index, SCM s_ncgr)
 {
 	assert_nitro_type(NCER_MAGIC, s_ncer);
 	assert_nitro_type(NCGR_MAGIC, s_ncgr);
@@ -266,7 +266,7 @@ static SCM image_set_pixels_from_ncer(SCM obj, SCM s_ncer, SCM s_cell_index, SCM
 	return SCM_UNSPECIFIED;
 }
 
-static SCM image_set_palette_from_nclr(SCM s_image, SCM s_nclr)
+static SCM rip_image_set_palette_from_nclr(SCM s_image, SCM s_nclr)
 {
 	scm_assert_smob_type(image_tag, s_image);
 	assert_nitro_type(NCLR_MAGIC, s_nclr);
@@ -292,7 +292,7 @@ static SCM image_set_palette_from_nclr(SCM s_image, SCM s_nclr)
 	return SCM_UNSPECIFIED;
 }
 
-static SCM image_save_png(SCM obj, SCM s_filename)
+static SCM rip_image_save_png(SCM obj, SCM s_filename)
 {
 	scm_assert_smob_type(image_tag, obj);
 	scm_dynwind_begin(0);
@@ -319,7 +319,7 @@ static SCM image_save_png(SCM obj, SCM s_filename)
 	return SCM_UNSPECIFIED;
 }
 
-static SCM image_save_gif(SCM obj, SCM s_filename)
+static SCM rip_image_save_gif(SCM obj, SCM s_filename)
 {
 	scm_assert_smob_type(image_tag, obj);
 	scm_dynwind_begin(0);
@@ -354,7 +354,7 @@ static void close_gif_handler(void *gif)
 /* FPS is the number of ticks to increment by.
  * Callback should take a tickcount and return an image, or #f to stop the gif
  */
-static SCM save_gif(SCM s_filename, SCM s_dim, SCM s_nclr, SCM s_fps, SCM callback)
+static SCM rip_save_gif(SCM s_filename, SCM s_dim, SCM s_nclr, SCM s_fps, SCM callback)
 {
 	scm_dynwind_begin(0);
 	char *filename = scm_to_locale_string(s_filename);
@@ -411,7 +411,7 @@ static SCM save_gif(SCM s_filename, SCM s_dim, SCM s_nclr, SCM s_fps, SCM callba
 	return SCM_UNSPECIFIED;
 }
 
-static SCM ncer_get_cell_count_s(SCM obj)
+static SCM rip_ncer_get_cell_count(SCM obj)
 {
 	assert_nitro_type(NCER_MAGIC, obj);
 	struct NCER *ncer = (void *) SCM_SMOB_DATA(obj);
@@ -419,7 +419,7 @@ static SCM ncer_get_cell_count_s(SCM obj)
 	return scm_from_int(ncer_get_cell_count(ncer));
 }
 
-static SCM nanr_draw_frame_s(SCM obj, SCM s_cell_index, SCM s_frame_index, SCM s_ncer, SCM s_ncgr, SCM s_image)
+static SCM rip_nanr_draw_frame(SCM obj, SCM s_cell_index, SCM s_frame_index, SCM s_ncer, SCM s_ncgr, SCM s_image)
 {
 	assert_nitro_type(NANR_MAGIC, obj);
 	assert_nitro_type(NCER_MAGIC, s_ncer);
@@ -444,7 +444,7 @@ static SCM nanr_draw_frame_s(SCM obj, SCM s_cell_index, SCM s_frame_index, SCM s
 	return SCM_UNSPECIFIED;
 }
 
-static SCM nanr_cell_count(SCM obj)
+static SCM rip_nanr_cell_count(SCM obj)
 {
 	assert_nitro_type(NANR_MAGIC, obj);
 	struct NANR *nanr = (void *) SCM_SMOB_DATA(obj);
@@ -452,7 +452,7 @@ static SCM nanr_cell_count(SCM obj)
 	return scm_from_int(nanr_get_cell_count(nanr));
 }
 
-static SCM nanr_frame_count(SCM obj, SCM s_cell_index)
+static SCM rip_nanr_frame_count(SCM obj, SCM s_cell_index)
 {
 	assert_nitro_type(NANR_MAGIC, obj);
 
@@ -462,7 +462,7 @@ static SCM nanr_frame_count(SCM obj, SCM s_cell_index)
 	return scm_from_int(nanr_get_frame_count(nanr, cell_index));
 }
 
-static SCM nmcr_draw_cell_s(SCM obj, SCM s_cell_index, SCM s_frame_index, SCM s_nanr, SCM s_ncer, SCM s_ncgr, SCM s_image, SCM s_offset)
+static SCM rip_nmcr_draw(SCM obj, SCM s_cell_index, SCM s_frame_index, SCM s_nanr, SCM s_ncer, SCM s_ncgr, SCM s_image, SCM s_offset)
 {
 	assert_nitro_type(NMCR_MAGIC, obj);
 	assert_nitro_type(NANR_MAGIC, s_nanr);
@@ -493,7 +493,7 @@ static SCM nmcr_draw_cell_s(SCM obj, SCM s_cell_index, SCM s_frame_index, SCM s_
 	return SCM_UNSPECIFIED;
 }
 
-static SCM nmar_cell_count(SCM obj)
+static SCM rip_nmar_cell_count(SCM obj)
 {
 	assert_nitro_type(NMAR_MAGIC, obj);
 	struct NMAR *nmar = (void *) SCM_SMOB_DATA(obj);
@@ -501,7 +501,7 @@ static SCM nmar_cell_count(SCM obj)
 	return scm_from_int(nmar_get_cell_count(nmar));
 }
 
-static SCM nmar_period(SCM obj, SCM s_index)
+static SCM rip_nmar_period(SCM obj, SCM s_index)
 {
 	assert_nitro_type(NMAR_MAGIC, obj);
 	struct NMAR *nmar = (void *) SCM_SMOB_DATA(obj);
@@ -511,7 +511,7 @@ static SCM nmar_period(SCM obj, SCM s_index)
 	return scm_from_int(nmar_get_period(nmar, index));
 }
 
-static SCM nmar_draw_s(SCM obj, SCM s_cell_index, SCM s_tick, SCM s_nmcr, SCM s_nanr, SCM s_ncer, SCM s_ncgr, SCM s_image, SCM s_offset)
+static SCM rip_nmar_draw(SCM obj, SCM s_cell_index, SCM s_tick, SCM s_nmcr, SCM s_nanr, SCM s_ncer, SCM s_ncgr, SCM s_image, SCM s_offset)
 {
 	assert_nitro_type(NMAR_MAGIC, obj);
 	assert_nitro_type(NMCR_MAGIC, s_nmcr);
@@ -556,29 +556,29 @@ main_callback(void *data, int argc, char *argv[])
 	image_tag = scm_make_smob_type("image", sizeof(struct image));
 	scm_set_smob_free(image_tag, free_image);
 
-	scm_c_define_gsubr("hello-world", 0, 0, 0, hello_world);
-	scm_c_define_gsubr("load-narc", 1, 0, 0, load_narc);
-	scm_c_define_gsubr("narc-file-count", 1, 0, 0, file_count);
-	scm_c_define_gsubr("narc-get-file-size", 2, 0, 0, get_file_size);
-	scm_c_define_gsubr("narc-load-file", 2, 1, 0, load_narc_file);
-	scm_c_define_gsubr("get-magic", 1, 0, 0, get_magic);
-	scm_c_define_gsubr("make-image", 0, 1, 0, make_image);
-	scm_c_define_gsubr("ncgr-decrypt-pt", 1, 0, 0, decrypt_pt);
-	scm_c_define_gsubr("ncgr-decrypt-dp", 1, 0, 0, decrypt_dp);
-	scm_c_define_gsubr("image-set-pixels-from-ncgr", 2, 0, 0, image_set_pixels_from_ncgr);
-	scm_c_define_gsubr("image-set-pixels-from-ncer", 4, 0, 0, image_set_pixels_from_ncer);
-	scm_c_define_gsubr("image-set-palette-from-nclr", 2, 0, 0, image_set_palette_from_nclr);
-	scm_c_define_gsubr("image-save-png", 2, 0, 0, image_save_png);
-	scm_c_define_gsubr("image-save-gif", 2, 0, 0, image_save_gif);
-	scm_c_define_gsubr("save-gif", 5, 0, 0, save_gif);
-	scm_c_define_gsubr("ncer-get-cell-count", 1, 0, 0, ncer_get_cell_count_s);
-	scm_c_define_gsubr("nanr-draw-frame", 6, 0, 0, nanr_draw_frame_s);
-	scm_c_define_gsubr("nanr-cell-count", 1, 0, 0, nanr_cell_count);
-	scm_c_define_gsubr("nanr-frame-count", 2, 0, 0, nanr_frame_count);
-	scm_c_define_gsubr("nmcr-draw", 7, 1, 0, nmcr_draw_cell_s);
-	scm_c_define_gsubr("nmar-cell-count", 1, 0, 0, nmar_cell_count);
-	scm_c_define_gsubr("nmar-period", 2, 0, 0, nmar_period);
-	scm_c_define_gsubr("nmar-draw", 8, 1, 0, nmar_draw_s);
+	scm_c_define_gsubr("hello-world", 0, 0, 0, rip_hello_world);
+	scm_c_define_gsubr("load-narc", 1, 0, 0, rip_load_narc);
+	scm_c_define_gsubr("narc-get-file-count", 1, 0, 0, rip_narc_get_file_count);
+	scm_c_define_gsubr("narc-get-file-size", 2, 0, 0, rip_narc_get_file_size);
+	scm_c_define_gsubr("narc-load-file", 2, 1, 0, rip_narc_load_file);
+	scm_c_define_gsubr("get-magic", 1, 0, 0, rip_get_magic);
+	scm_c_define_gsubr("make-image", 0, 1, 0, rip_make_image);
+	scm_c_define_gsubr("ncgr-decrypt-pt", 1, 0, 0, rip_ncgr_decrypt_pt);
+	scm_c_define_gsubr("ncgr-decrypt-dp", 1, 0, 0, rip_ncgr_decrypt_dp);
+	scm_c_define_gsubr("image-set-pixels-from-ncgr", 2, 0, 0, rip_image_set_pixels_from_ncgr);
+	scm_c_define_gsubr("image-set-pixels-from-ncer", 4, 0, 0, rip_image_set_pixels_from_ncer);
+	scm_c_define_gsubr("image-set-palette-from-nclr", 2, 0, 0, rip_image_set_palette_from_nclr);
+	scm_c_define_gsubr("image-save-png", 2, 0, 0, rip_image_save_png);
+	scm_c_define_gsubr("image-save-gif", 2, 0, 0, rip_image_save_gif);
+	scm_c_define_gsubr("save-gif", 5, 0, 0, rip_save_gif);
+	scm_c_define_gsubr("ncer-get-cell-count", 1, 0, 0, rip_ncer_get_cell_count);
+	scm_c_define_gsubr("nanr-draw-frame", 6, 0, 0, rip_nanr_draw_frame);
+	scm_c_define_gsubr("nanr-cell-count", 1, 0, 0, rip_nanr_cell_count);
+	scm_c_define_gsubr("nanr-frame-count", 2, 0, 0, rip_nanr_frame_count);
+	scm_c_define_gsubr("nmcr-draw", 7, 1, 0, rip_nmcr_draw);
+	scm_c_define_gsubr("nmar-cell-count", 1, 0, 0, rip_nmar_cell_count);
+	scm_c_define_gsubr("nmar-period", 2, 0, 0, rip_nmar_period);
+	scm_c_define_gsubr("nmar-draw", 8, 1, 0, rip_nmar_draw);
 
 	scm_shell(argc, argv);
 }

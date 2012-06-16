@@ -76,7 +76,7 @@
 
       (for-each rip-sprite sprites dirs)))
 
-  (let* ((count (narc-file-count narc))
+  (let* ((count (narc-get-file-count narc))
          (n (floor (/ count 6))))
     (map rip-pokemon (cdr (iota n)))))
 

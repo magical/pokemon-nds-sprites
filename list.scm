@@ -8,7 +8,7 @@
          (lambda (key . args) #f)))
 
 (let* ((narc (load-narc filename))
-       (count (narc-file-count narc)))
+       (count (narc-get-file-count narc)))
   (do ((i 0 (1+ i)))
       ((>= i count))
     (format #t "~3d ~a~%" i
