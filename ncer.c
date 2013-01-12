@@ -137,7 +137,7 @@ ncer_free(void *buf)
 }
 
 struct nitro_type NCER_type = {
-	format_header(NCER_MAGIC, struct NCER),
+	nitro_type_init(NCER_MAGIC, struct NCER),
 
 	.read = ncer_read,
 	.free = ncer_free,

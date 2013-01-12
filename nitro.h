@@ -67,7 +67,7 @@ struct nitro_type {
 
 //extern const struct format_info * const formats[];
 
-#define format_header(magic_, type) \
+#define nitro_type_init(magic_, type) \
 	.magic = magic_, \
 	.size = sizeof (type), \
 	.initializer = &(type){}

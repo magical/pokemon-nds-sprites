@@ -100,7 +100,7 @@ nmcr_free(void *buf)
 }
 
 struct nitro_type NMCR_type = {
-	format_header(NMCR_MAGIC, struct NMCR),
+	nitro_type_init(NMCR_MAGIC, struct NMCR),
 	
 	.read = nmcr_read,
 	.free = nmcr_free,

@@ -156,7 +156,7 @@ nanr_free(void *buf)
 }
 
 struct nitro_type NANR_type = {
-	format_header(NANR_MAGIC, struct NANR),
+	nitro_type_init(NANR_MAGIC, struct NANR),
 
 	.read = nanr_read,
 	.free = nanr_free,
@@ -193,7 +193,7 @@ nmar_free(void *buf)
 }
 
 struct nitro_type NMAR_type = {
-	format_header(NMAR_MAGIC, struct NMAR),
+	nitro_type_init(NMAR_MAGIC, struct NMAR),
 
 	.read = nmar_read,
 	.free = nmar_free,

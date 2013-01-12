@@ -174,7 +174,7 @@ narc_load_file(struct NARC *self, int index)
 
 /* the NARC signature is big-endian for some reason */
 struct nitro_type NARC_type = {
-	format_header(NARC_MAGIC, struct NARC),
+	nitro_type_init(NARC_MAGIC, struct NARC),
 	
 	.read = narc_read,
 	.free = narc_free,

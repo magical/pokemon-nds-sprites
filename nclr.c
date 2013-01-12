@@ -80,7 +80,7 @@ nclr_free(void *buf) {
 }
 
 struct nitro_type NCLR_type = {
-	format_header(NCLR_MAGIC, struct NCLR),
+	nitro_type_init(NCLR_MAGIC, struct NCLR),
 
 	.read = nclr_read,
 	.free = nclr_free,
