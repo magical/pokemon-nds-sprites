@@ -76,37 +76,21 @@ nitro_read_nocompressed(FILE *fp, magic_t magic)
 	if (type == NULL) {
 		warn("Unknown format: %08x", magic);
 		return NULL;
-	} else if (type->size == 0) {
-		char magic_buf[MAGIC_BUF_SIZE];
-		warn("Unsupported format: %s", strmagic(magic, magic_buf));
-		chunk = malloc(sizeof(struct nitro));
-	} else {
-		chunk = malloc(type->size);
 	}
 
+	assert(type->size > 0);
+	chunk = malloc(type->size);
 	if (chunk == NULL) {
 		return NULL;
 	}
 
-	/* time to actually load it */
-
-	// simply initializing the structure to all 0s would break on
-	// architectures where the null pointer != 0.
-	if (type->initializer != NULL) {
-		memcpy(chunk, type->initializer, type->size);
-	} else if (type->size > 0) {
-		memset(chunk, 0, type->size);
-	} else {
-		memset(chunk, 0, sizeof(struct nitro));
-	}
-
-	if (type->init != NULL) {
-		if (type->init(chunk)) {
-			goto error;
-		}
-	} else {
-		/* it's already zeroed; there's nothing more to do */
-	}
+	// Initialize the structure. This isn't _really_ valid, since the
+	// representation of NULL and 0.0 might not be all zero bits,
+	// but... on x86 that _is_ how they are represented, and the rest of
+	// the code isn't quite portable anway...
+	// The proper way would be for each type to implement an .init method
+	// which manually initializes each field. Not difficult, just tedious.
+	memset(chunk, 0, type->size);
 
 	if (type->read != NULL) {
 		switch (type->read(chunk, fp)) {

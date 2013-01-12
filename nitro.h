@@ -29,6 +29,18 @@ struct nitro {
 	u16 chunk_count;
 };
 
+struct nitro_type {
+	magic_t magic;
+	size_t size;
+
+	int (*read)(void *, FILE *);
+	void (*free)(void *);
+};
+
+#define nitro_type_init(magic_, type) \
+	.magic = magic_, \
+	.size = sizeof(type)
+
 
 // An OBJ is a moveable sprite with first-class support from the DS's video
 // system. They are sometimes called OAMs, which more properly refers to the
@@ -54,23 +66,6 @@ struct OBJ {
 // obj_sizes [size][shape]
 extern struct dim obj_sizes[4][4];
 
-struct nitro_type {
-	magic_t magic;
-
-	size_t size;
-	void *initializer;
-
-	int (*init)(void *);
-	int (*read)(void *, FILE *);
-	void (*free)(void *);
-};
-
-//extern const struct format_info * const formats[];
-
-#define nitro_type_init(magic_, type) \
-	.magic = magic_, \
-	.size = sizeof (type), \
-	.initializer = &(type){}
 
 /* Public functions */
 
