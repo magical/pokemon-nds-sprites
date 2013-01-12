@@ -27,30 +27,31 @@ struct dim obj_sizes[4][4] = {
 };
 #undef D
 
-const struct format_info * const formats[] = {
-	&NARC_format,
+const struct nitro_type * const nitro_types[] = {
+	&NARC_type,
 
 	/* lesser formats */
-	&NCGR_format,
-	&NCLR_format,
-	&NCER_format,
-	&NANR_format,
-	&NMCR_format,
-	&NMAR_format,
+	&NCGR_type,
+	&NCLR_type,
+	&NCER_type,
+	&NANR_type,
+	&NMCR_type,
+	&NMAR_type,
 
 	NULL
 };
 
-const struct format_info *
-format_lookup(magic_t magic)
+/* Find the nitro_type associated with some magic number */
+const struct nitro_type *
+nitro_lookup(magic_t magic)
 {
-	const struct format_info * const *fmt = formats;
+	const struct nitro_type * const *type = nitro_types;
 
-	while (*fmt != NULL) {
-		if ((*fmt)->magic == magic) {
-			return *fmt;
+	while (*type != NULL) {
+		if ((*type)->magic == magic) {
+			return *type;
 		}
-		fmt++;
+		type++;
 	}
 
 	return NULL;
@@ -70,17 +71,17 @@ static void *
 nitro_read_nocompressed(FILE *fp, magic_t magic)
 {
 	void *chunk;
-	const struct format_info *fmt = format_lookup(magic);
+	const struct nitro_type *type = nitro_lookup(magic);
 
-	if (fmt == NULL) {
+	if (type == NULL) {
 		warn("Unknown format: %08x", magic);
 		return NULL;
-	} else if (fmt->size == 0) {
+	} else if (type->size == 0) {
 		char magic_buf[MAGIC_BUF_SIZE];
 		warn("Unsupported format: %s", strmagic(magic, magic_buf));
 		chunk = malloc(sizeof(struct nitro));
 	} else {
-		chunk = malloc(fmt->size);
+		chunk = malloc(type->size);
 	}
 
 	if (chunk == NULL) {
@@ -91,24 +92,24 @@ nitro_read_nocompressed(FILE *fp, magic_t magic)
 
 	// simply initializing the structure to all 0s would break on
 	// architectures where the null pointer != 0.
-	if (fmt->initializer != NULL) {
-		memcpy(chunk, fmt->initializer, fmt->size);
-	} else if (fmt->size > 0) {
-		memset(chunk, 0, fmt->size);
+	if (type->initializer != NULL) {
+		memcpy(chunk, type->initializer, type->size);
+	} else if (type->size > 0) {
+		memset(chunk, 0, type->size);
 	} else {
 		memset(chunk, 0, sizeof(struct nitro));
 	}
 
-	if (fmt->init != NULL) {
-		if (fmt->init(chunk)) {
+	if (type->init != NULL) {
+		if (type->init(chunk)) {
 			goto error;
 		}
 	} else {
 		/* it's already zeroed; there's nothing more to do */
 	}
 
-	if (fmt->read != NULL) {
-		switch (fmt->read(chunk, fp)) {
+	if (type->read != NULL) {
+		switch (type->read(chunk, fp)) {
 		case OKAY:
 			break;
 		case ABORT:
@@ -116,8 +117,8 @@ nitro_read_nocompressed(FILE *fp, magic_t magic)
 		case FAIL:
 		case NOMEM:
 		default:
-			if (fmt->free != NULL) {
-				fmt->free(chunk);
+			if (type->free != NULL) {
+				type->free(chunk);
 			}
 			goto error;
 		}
@@ -204,10 +205,10 @@ nitro_free(void *chunk)
 {
 	struct nitro *header = chunk;
 	if (chunk != NULL) {
-		const struct format_info *fmt = format_lookup(header->magic);
+		const struct nitro_type *type = nitro_lookup(header->magic);
 
-		if (fmt != NULL && fmt->free != NULL) {
-			fmt->free(chunk);
+		if (type != NULL && type->free != NULL) {
+			type->free(chunk);
 		}
 	}
 }

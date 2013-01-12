@@ -86,7 +86,7 @@ ncgr_free(void *buf) {
 	}
 }
 
-struct format_info NCGR_format = {
+struct nitro_type NCGR_type = {
 	format_header(NCGR_MAGIC, struct NCGR),
 	
 	.read = ncgr_read,

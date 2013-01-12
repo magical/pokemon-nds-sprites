@@ -136,7 +136,7 @@ ncer_free(void *buf)
 	}
 }
 
-struct format_info NCER_format = {
+struct nitro_type NCER_type = {
 	format_header(NCER_MAGIC, struct NCER),
 
 	.read = ncer_read,

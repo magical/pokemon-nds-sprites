@@ -99,7 +99,7 @@ nmcr_free(void *buf)
 	}
 }
 
-struct format_info NMCR_format = {
+struct nitro_type NMCR_type = {
 	format_header(NMCR_MAGIC, struct NMCR),
 	
 	.read = nmcr_read,

@@ -54,7 +54,7 @@ struct OBJ {
 // obj_sizes [size][shape]
 extern struct dim obj_sizes[4][4];
 
-struct format_info {
+struct nitro_type {
 	magic_t magic;
 
 	size_t size;
@@ -74,7 +74,7 @@ struct format_info {
 
 /* Public functions */
 
-extern const struct format_info *format_lookup(magic_t magic);
+extern const struct nitro_type *nitro_lookup(magic_t magic);
 // size may be zero unless you're reading compressed data
 extern void *nitro_read(FILE *fp, off_t size);
 extern void nitro_free(void *chunk);
@@ -112,13 +112,13 @@ struct NMAR;
 #define NMCR_MAGIC ((magic_t)'NMCR')
 #define NMAR_MAGIC ((magic_t)'NMAR')
 
-extern struct format_info NARC_format;
-extern struct format_info NCGR_format;
-extern struct format_info NCLR_format;
-extern struct format_info NCER_format;
-extern struct format_info NANR_format;
-extern struct format_info NMCR_format;
-extern struct format_info NMAR_format;
+extern struct nitro_type NARC_type;
+extern struct nitro_type NCGR_type;
+extern struct nitro_type NCLR_type;
+extern struct nitro_type NCER_type;
+extern struct nitro_type NANR_type;
+extern struct nitro_type NMCR_type;
+extern struct nitro_type NMAR_type;
 
 
 

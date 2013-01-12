@@ -79,7 +79,7 @@ nclr_free(void *buf) {
 	}
 }
 
-struct format_info NCLR_format = {
+struct nitro_type NCLR_type = {
 	format_header(NCLR_MAGIC, struct NCLR),
 
 	.read = nclr_read,
