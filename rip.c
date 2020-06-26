@@ -164,7 +164,7 @@ rip_sprites(void)
 	const struct sprite_dirs {
 		const char *normal;
 		const char *shiny;
-	} const dirs[] = {
+	} dirs[] = {
 		{"back/female", "back/shiny/female"},
 		{"back", "back/shiny"},
 		{"female", "shiny/female"},
@@ -278,7 +278,7 @@ rip_bw_sprites(void)
 	const struct sprite_dirs {
 		const char *normal;
 		const char *shiny;
-	} const dirs[] = {
+	} dirs[] = {
 		{"", "shiny"},
 		{"female", "shiny/female"},
 		{"back", "back/shiny"},
