@@ -149,9 +149,21 @@ image_write_png(struct image *self, FILE *fp)
 	return OKAY;
 }
 
+void print_gif_error(int err)
+{
+	const char *text = GifErrorString(err);
+	if (text != NULL) {
+		fprintf(stderr, "GIF-LIB error: %s.\n", text);
+	} else {
+		fprintf(stderr, "GIF-LIB undefined error %d.\n", err);
+	}
+}
+
 int
 image_write_gif(struct image *self, FILE *fp)
 {
+	int err = 0;
+
 	assert(self != NULL);
 	assert(self->pixels != NULL);
 	assert(self->palette != NULL);
@@ -166,9 +178,10 @@ image_write_gif(struct image *self, FILE *fp)
 	GifFileType *gif = NULL;
 
 	// Note: this is freed by EGifCloseFile
-	colors = MakeMapObject(self->palette->count, NULL);
+	colors = GifMakeMapObject(self->palette->count, NULL);
 	if (colors == NULL) {
-		goto giferror;
+		fprintf(stderr, "error allocating color map\n");
+		return FAIL;
 	}
 
 	int bit_depth = self->palette->bit_depth;
@@ -181,11 +194,11 @@ image_write_gif(struct image *self, FILE *fp)
 		colors->Colors[i].Blue = (int)round(c->b * factor);
 	}
 
-	EGifSetGifVersion("89a");
-	gif = EGifOpenFileHandle(fd);
+	gif = EGifOpenFileHandle(fd, &err);
 	if (gif == NULL) {
-		FreeMapObject(colors);
-		goto giferror;
+		GifFreeMapObject(colors);
+		print_gif_error(err);
+		return FAIL;
 	}
 
 	// "do or die"
@@ -206,18 +219,21 @@ image_write_gif(struct image *self, FILE *fp)
 		u8 *row = self->pixels->data + self->dim.width * y;
 		dod(EGifPutLine(gif, row, self->dim.width));
 	}
-	if (EGifCloseFile(gif) != GIF_OK) {
-		PrintGifError();
+	if (EGifCloseFile(gif, &err) != GIF_OK) {
+		print_gif_error(err);
+		return FAIL;
 	}
-	FreeMapObject(colors);
+	GifFreeMapObject(colors);
 	return OKAY;
 
 	#undef dod
 
 giferror:
-	PrintGifError();
-	if (gif != NULL && EGifCloseFile(gif) != GIF_OK) {
-		PrintGifError();
+	if (gif != NULL) {
+		print_gif_error(gif->Error);
+		if (EGifCloseFile(gif, &err) != GIF_OK) {
+			print_gif_error(err);
+		}
 	}
 	return FAIL;
 }
@@ -229,6 +245,8 @@ giferror:
 GifFileType *
 image_gif_new(struct image *self, const char *outfile)
 {
+	int err = 0;
+
 	assert(self != NULL);
 	assert(outfile != NULL);
 	if (self->palette == NULL || self->palette->colors == NULL) {
@@ -239,9 +257,10 @@ image_gif_new(struct image *self, const char *outfile)
 	GifFileType *gif = NULL;
 
 	// Note: this is freed by EGifCloseFile
-	colors = MakeMapObject(self->palette->count, NULL);
+	colors = GifMakeMapObject(self->palette->count, NULL);
 	if (colors == NULL) {
-		goto giferror;
+		fprintf(stderr, "error allocating color map\n");
+		return NULL;
 	}
 
 	int bit_depth = self->palette->bit_depth;
@@ -254,11 +273,11 @@ image_gif_new(struct image *self, const char *outfile)
 		colors->Colors[i].Blue = (int)round(c->b * factor);
 	}
 
-	EGifSetGifVersion("89a");
-	gif = EGifOpenFileName(outfile, FALSE);
+	gif = EGifOpenFileName(outfile, false, &err);
 	if (gif == NULL) {
-		FreeMapObject(colors);
-		goto giferror;
+		GifFreeMapObject(colors);
+		print_gif_error(err);
+		return NULL;
 	}
 
 	if (EGifPutScreenDesc(gif, self->dim.width, self->dim.height,
@@ -269,22 +288,24 @@ image_gif_new(struct image *self, const char *outfile)
 	// loop forever
 	char app[] = "NETSCAPE2.0";
 	char data[] = "\x01\x00\x00";
-	if (EGifPutExtensionFirst(gif, APPLICATION_EXT_FUNC_CODE,
-	                          sizeof(app) - 1, app) != GIF_OK ||
-	    EGifPutExtensionLast(gif, APPLICATION_EXT_FUNC_CODE,
-	                         sizeof(data) - 1, data) != GIF_OK) {
+	if (EGifPutExtensionLeader(gif, APPLICATION_EXT_FUNC_CODE) != GIF_OK ||
+	    EGifPutExtensionBlock(gif, sizeof(app) - 1, app) != GIF_OK ||
+	    EGifPutExtensionBlock(gif, sizeof(data) - 1, data) != GIF_OK ||
+	    EGifPutExtensionTrailer(gif) != GIF_OK) {
 		goto giferror;
 	}
 
 	return gif;
 
 giferror:
-	PrintGifError();
-	if (gif != NULL && EGifCloseFile(gif) != GIF_OK) {
-		PrintGifError();
+	if (gif != NULL) {
+		print_gif_error(gif->Error);
+		if (EGifCloseFile(gif, &err) != GIF_OK) {
+			print_gif_error(err);
+		}
 	}
 	if (colors != NULL) {
-		FreeMapObject(colors);
+		GifFreeMapObject(colors);
 	}
 	return NULL;
 }
@@ -323,8 +344,9 @@ image_gif_add_frame(struct image *self, GifFileType *gif, u16 delay)
 int
 image_gif_close(GifFileType *gif)
 {
-	if (EGifCloseFile(gif) != GIF_OK) {
-		PrintGifError();
+	int err = 0;
+	if (EGifCloseFile(gif, &err) != GIF_OK) {
+		print_gif_error(err);
 		return FAIL;
 	}
 
